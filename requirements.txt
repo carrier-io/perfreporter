@@ -1,0 +1,6 @@
+redis==3.2.0
+python-logging-loki==0.1.0
+reportportal-client
+jira==2.0.0
+requests==2.19.1
+PyYAML==3.13
