@@ -3,4 +3,3 @@ reportportal-client
 jira==2.0.0
 requests==2.19.1
 PyYAML==3.13
-perfreporter
