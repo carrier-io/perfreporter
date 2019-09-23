@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import sys
 import logging
 import logging_loki
@@ -84,7 +81,7 @@ class Reporter(object):
         if loki:
             handler = logging_loki.LokiHandler(
                 url=loki,
-                tags={"Test": args['build_id']},
+                tags={"Test": args['simulation']},
             )
             error_message = "Error key: {};; UTC Time: {};; Request name: {};; Method: {};; Response code: {};;" \
                             " URL: {};; Error message: {};; Request params: {};; Headers: {};; Response body: {};;"

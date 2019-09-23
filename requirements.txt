@@ -3,3 +3,4 @@ reportportal-client==3.2.0
 jira==2.0.0
 requests==2.19.1
 PyYAML==3.13
+influxdb==5.2.0
