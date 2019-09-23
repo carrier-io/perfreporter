@@ -20,10 +20,9 @@ SELECT_THRESHOLDS = "select last(red) as red, last(yellow) as yellow from thresh
                     "and simulation=\'{}\'"
 
 
-class Comparison(object):
+class DataManager(object):
     def __init__(self, arguments):
         self.args = arguments
-        self.baseline = None
         self.last_build_data = None
         self.client = InfluxDBClient(self.args["influx_host"], self.args['influx_port'],
                                      username=self.args['influx_user'], password=self.args['influx_password'])
@@ -101,6 +100,7 @@ class Comparison(object):
         comparison_metric = self.args['comparison_metric']
         compare_with_baseline = []
         if not baseline:
+            print("Baseline not found")
             return 0, []
         for request in last_build:
             for baseline_request in baseline:
@@ -116,7 +116,7 @@ class Comparison(object):
 
     def compare_with_thresholds(self):
         last_build = self.get_last_build()
-        last_build = self.append_api_thresholds_to_test_data(last_build)
+        last_build = self.append_thresholds_to_test_data(last_build)
         compare_with_thresholds = []
         comparison_metric = self.args['comparison_metric']
         for request in last_build:
@@ -130,8 +130,6 @@ class Comparison(object):
         return missed_threshold_rate, compare_with_thresholds
 
     def get_baseline(self):
-        if self.baseline:
-            return self.baseline
         self.client.switch_database(self.args['influx_comparison_database'])
         baseline_build_id = self.client.query(
             SELECT_BASELINE_BUILD_ID.format(self.args['simulation'], self.args['type'],
@@ -141,8 +139,7 @@ class Comparison(object):
             return None
         _id = result[0]['build_id']
         baseline_data = self.client.query(SELECT_BASELINE_DATA.format(_id))
-        self.baseline = list(baseline_data.get_points())
-        return self.baseline
+        return list(baseline_data.get_points())
 
     def get_last_build(self):
         if self.last_build_data:
@@ -152,7 +149,7 @@ class Comparison(object):
         self.last_build_data = list(test_data.get_points())
         return self.last_build_data
 
-    def append_api_thresholds_to_test_data(self, test):
+    def append_thresholds_to_test_data(self, test):
         self.client.switch_database(self.args['influx_thresholds_database'])
         test_data_with_thresholds = []
         comparison_metric = self.args['comparison_metric']
