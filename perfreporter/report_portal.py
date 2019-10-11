@@ -100,7 +100,7 @@ class ReportPortal:
                             message="{}: {}".format(message, self.html_decode(str(errors[message]))),
                             level="{}".format(level))
 
-    def log_unique_error_id(self, service, request_name, method, response_code, error_code):
+    def log_unique_error_id(self, service, request_name, method, response_code):
         error_id = ""
         if method is not 'undefined':
             error_id += method + '_' + request_name
@@ -108,8 +108,6 @@ class ReportPortal:
             error_id += request_name
         if response_code is not 'undefined':
             error_id += '_' + response_code
-        elif error_code is not 'undefined':
-            error_id += '_' + error_code
         service.log(time=self.timestamp(), message=error_id, level='ERROR')
 
     def get_item_name(self, entry):
@@ -152,12 +150,11 @@ class ReportPortal:
                     self.log_message(service, 'Request_params', errors[key], 'WARN')
                     self.log_message(service, 'Request headers', errors[key], 'INFO')
                     self.log_message(service, 'Error count', errors[key], 'WARN')
-                    self.log_message(service, 'Error code', errors[key], 'WARN')
                     self.log_message(service, 'Error_message', errors[key], 'WARN')
                     self.log_message(service, 'Response code', errors[key], 'WARN')
                     self.log_message(service, 'Response', errors[key], 'WARN')
                     self.log_unique_error_id(service, errors[key]['Request name'], errors[key]['Method'],
-                                             errors[key]['Response code'], errors[key]['Error code'])
+                                             errors[key]['Response code'])
 
                     service.finish_test_item(end_time=self.timestamp(), status="FAILED")
             else:

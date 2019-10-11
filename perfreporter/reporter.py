@@ -1,6 +1,4 @@
 import sys
-import logging
-import logging_loki
 import yaml
 
 from perfreporter.report_portal import ReportPortal
@@ -77,24 +75,7 @@ class Reporter(object):
         return loki, rp_service, jira_service
 
     @staticmethod
-    def report_errors(aggregated_errors, errors, args, loki, rp_service, jira_service):
-        if loki:
-            handler = logging_loki.LokiHandler(
-                url=loki,
-                tags={"Test": args['simulation']},
-            )
-            error_message = "Error key: {};; UTC Time: {};; Request name: {};; Method: {};; Response code: {};;" \
-                            " URL: {};; Error message: {};; Request params: {};; Headers: {};; Response body: {};;"
-            logger = logging.getLogger("error-logger")
-            logger.addHandler(handler)
-            for error in errors:
-                logger.error(
-                    error_message.format(str(error['error_key']), str(error['Time']), str(error['Request name']),
-                                         str(error['Method']), str(error['Response code']),
-                                         str(error['Request URL']), str(error['Error_message']),
-                                         str(error['Request_params']), str(error['Request headers']),
-                                         str(error['Response'])))
-
+    def report_errors(aggregated_errors, rp_service, jira_service):
         if rp_service and rp_service.check_functional_errors:
             rp_service.report_errors(aggregated_errors)
 
