@@ -164,7 +164,7 @@ class DataManager(object):
         self.client.switch_database(self.args['influx_comparison_database'])
         baseline_build_id = self.client.query(
             SELECT_BASELINE_BUILD_ID.format(self.args['simulation'], self.args['type'],
-                                            str(self.args['users']), self.args['simulation']))
+                                            str(self.get_user_count()), self.args['simulation']))
         result = list(baseline_build_id.get_points())
         if len(result) == 0:
             return None
@@ -175,13 +175,13 @@ class DataManager(object):
     def get_last_build(self):
         if self.last_build_data:
             return self.last_build_data
-        self.client.switch_database(self.args['influx_comparison_database'])
+        self.client.switch_database(self.args['comparison_db'])
         test_data = self.client.query(SELECT_LAST_BUILD_DATA.format(self.args['build_id']))
         self.last_build_data = list(test_data.get_points())
         return self.last_build_data
 
     def append_thresholds_to_test_data(self, test):
-        self.client.switch_database(self.args['influx_thresholds_database'])
+        self.client.switch_database(self.args['thresholds_db'])
         test_data_with_thresholds = []
         comparison_metric = self.args['comparison_metric']
         for request in test:
