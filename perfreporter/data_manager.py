@@ -82,7 +82,7 @@ class DataManager(object):
                     "build_id": reqs[req]['build_id'],
                     "request_name": reqs[req]['request_name'],
                     "method": reqs[req]['method'],
-                    "duration": int(self.args['end_time']) / 1000 - int(self.args['start_time']) / 1000
+                    "duration": duration
                 },
                 "time": datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 "fields": {
