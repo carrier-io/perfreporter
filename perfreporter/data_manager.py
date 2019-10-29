@@ -161,7 +161,7 @@ class DataManager(object):
         return missed_threshold_rate, compare_with_thresholds
 
     def get_baseline(self):
-        self.client.switch_database(self.args['influx_comparison_database'])
+        self.client.switch_database(self.args['comparison_db'])
         baseline_build_id = self.client.query(
             SELECT_BASELINE_BUILD_ID.format(self.args['simulation'], self.args['type'],
                                             str(self.get_user_count()), self.args['simulation']))
