@@ -12,15 +12,16 @@ class PostProcessor:
         self.data_manager = DataManager(args)
 
     def post_processing(self):
-        self.data_manager.write_comparison_data_to_influx()
         if self.config_file:
             with open("/tmp/config.yaml", "w") as f:
                 f.write(self.config_file)
         reporter = Reporter()
         loki, rp_service, jira_service = reporter.parse_config_file(self.args)
-        performance_degradation_rate, compare_with_baseline = self.data_manager.compare_with_baseline()
-        missed_threshold_rate, compare_with_thresholds = self.data_manager.compare_with_thresholds()
         reporter.report_errors(self.aggregated_errors, rp_service, jira_service)
-        reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
-                                                jira_service)
-        reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
+        if self.args['influx_host']:
+            self.data_manager.write_comparison_data_to_influx()
+            performance_degradation_rate, compare_with_baseline = self.data_manager.compare_with_baseline()
+            missed_threshold_rate, compare_with_thresholds = self.data_manager.compare_with_thresholds()
+            reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
+                                                    jira_service)
+            reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
