@@ -18,9 +18,7 @@ class PostProcessor:
         reporter = Reporter()
         loki, rp_service, jira_service = reporter.parse_config_file(self.args)
         reporter.report_errors(self.aggregated_errors, rp_service, jira_service)
-        print(self.args['influx_host'])
         if self.args['influx_host']:
-            print(self.args['influx_host'])
             self.data_manager.write_comparison_data_to_influx()
             performance_degradation_rate, compare_with_baseline = self.data_manager.compare_with_baseline()
             missed_threshold_rate, compare_with_thresholds = self.data_manager.compare_with_thresholds()

@@ -25,7 +25,6 @@ class DataManager(object):
         self.last_build_data = None
         self.client = InfluxDBClient(self.args["influx_host"], self.args['influx_port'],
                                      username=self.args['influx_user'], password=self.args['influx_password'])
-        print("Data manager")
 
     def write_comparison_data_to_influx(self):
         reqs = dict()
