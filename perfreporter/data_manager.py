@@ -13,7 +13,7 @@ SELECT_BASELINE_DATA = "select * from api_comparison where build_id=\'{}\'"
 SELECT_THRESHOLDS = "select last(red) as red, last(yellow) as yellow from threshold where request_name=\'{}\' " \
                     "and simulation=\'{}\'"
 
-SELECT_USERS_COUNT = "select sum(\"distinct\") from (select distinct(\"user_count\") from \"users\" where " \
+SELECT_USERS_COUNT = "select sum(\"max\") from (select max(\"user_count\") from \"users\" where " \
                      "build_id='{}' group by lg_id)"
 
 SELECT_TEST_DATA = "select * from {} where build_id='{}'"
