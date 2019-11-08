@@ -161,10 +161,11 @@ class DataManager(object):
         return missed_threshold_rate, compare_with_thresholds
 
     def get_baseline(self):
+        users = str(self.get_user_count())
         self.client.switch_database(self.args['comparison_db'])
         baseline_build_id = self.client.query(
             SELECT_BASELINE_BUILD_ID.format(self.args['simulation'], self.args['type'],
-                                            str(self.get_user_count()), self.args['simulation']))
+                                            users, self.args['simulation']))
         result = list(baseline_build_id.get_points())
         if len(result) == 0:
             return None
