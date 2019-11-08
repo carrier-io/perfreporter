@@ -13,7 +13,7 @@ SELECT_BASELINE_DATA = "select * from api_comparison where build_id=\'{}\'"
 SELECT_THRESHOLDS = "select last(red) as red, last(yellow) as yellow from threshold where request_name=\'{}\' " \
                     "and simulation=\'{}\'"
 
-SELECT_USERS_COUNT = "select sum(\"distinct\") from (select distinct(\"user_count\") from \"users\" where " \
+SELECT_USERS_COUNT = "select sum(\"max\") from (select max(\"user_count\") from \"users\" where " \
                      "build_id='{}' group by lg_id)"
 
 SELECT_TEST_DATA = "select * from {} where build_id='{}'"
@@ -161,10 +161,11 @@ class DataManager(object):
         return missed_threshold_rate, compare_with_thresholds
 
     def get_baseline(self):
+        users = str(self.get_user_count())
         self.client.switch_database(self.args['comparison_db'])
         baseline_build_id = self.client.query(
             SELECT_BASELINE_BUILD_ID.format(self.args['simulation'], self.args['type'],
-                                            str(self.get_user_count()), self.args['simulation']))
+                                            users, self.args['simulation']))
         result = list(baseline_build_id.get_points())
         if len(result) == 0:
             return None
