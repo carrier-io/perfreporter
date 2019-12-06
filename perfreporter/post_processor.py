@@ -52,6 +52,7 @@ class PostProcessor:
             # delete file from minio
             requests.get(f'{galloper_url}/artifacts/{results_bucket}/{file}/delete')
 
+        # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
         self.post_processing(args, aggregated_errors)
 
