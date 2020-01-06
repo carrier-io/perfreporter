@@ -3,6 +3,7 @@ import datetime
 from influxdb import InfluxDBClient
 import numpy as np
 import operator
+from copy import deepcopy
 
 SELECT_LAST_BUILD_DATA = "select * from api_comparison where build_id=\'{}\'"
 
@@ -243,17 +244,21 @@ class DataManager(object):
                 individual_dict[each['scope']] = []
             individual_dict[each['scope']].append(each)
         for request in test:
-            thresholds = every_applicable
+            thresholds = []
+            targets = []
             if request['request_name'] in individual_dict:
+                for ind in individual_dict[request['request_name']]:
+                    targets.append(ind['target'])
                 thresholds.extend(individual_dict[request['request_name']])
+            for th in every_applicable:
+                if th['target'] not in targets:
+                    thresholds.append(th)
             for th in thresholds:
-                _checked, compare_with_thresholds = compile_violation(request, th, total_checked, compare_with_thresholds)
-                total_checked += _checked
+                total_checked, compare_with_thresholds = compile_violation(request, th, total_checked, compare_with_thresholds)
         if globaly_applicable:
             test_data = self.aggregate_test()
             for th in globaly_applicable:
-                _checked, compare_with_thresholds = compile_violation(test_data, th, total_checked, compare_with_thresholds)
-                total_checked += _checked
+                total_checked, compare_with_thresholds = compile_violation(test_data, th, total_checked, compare_with_thresholds)
         violation = 0
         if total_checked:
             violation = round(float(len(compare_with_thresholds) / total_checked) * 100, 2)
