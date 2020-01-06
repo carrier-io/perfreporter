@@ -7,6 +7,7 @@ from reportportal_client import ReportPortalServiceAsync
 from functools import partial
 import hashlib
 
+from perfreporter.utils import calculate_appendage
 
 class partialmethod(partial):
     def __get__(self, instance, owner):
@@ -227,26 +228,16 @@ class ReportPortal:
                                         parameters={'simulation': self.args['simulation'],
                                                     'test type': self.args['type']})
 
-                service.log(time=self.timestamp(),
-                            message="The following requests exceeded the yellow threshold:",
-                            level="{}".format('INFO'))
-                for request in compare_with_thresholds:
-                    if request['threshold'] == 'yellow':
-                        service.log(time=self.timestamp(), message="\"{}\" reached {} ms by {}. Threshold {} ms."
-                                    .format(request['request_name'], request['response_time'],
-                                            self.args['comparison_metric'], request['yellow']),
-                                    level="{}".format('WARN'))
-
-                service.log(time=self.timestamp(),
-                            message="The following requests exceeded the red threshold:",
-                            level="{}".format('INFO'))
-                for request in compare_with_thresholds:
-                    if request['threshold'] == 'red':
-                        service.log(time=self.timestamp(), message="\"{}\" reached {} ms by {}. Threshold {} ms."
-                                    .format(request['request_name'], request['response_time'],
-                                            self.args['comparison_metric'], request['red']),
-                                    level="{}".format('WARN'))
-
+                for color in ["yellow", "red"]
+                    colored = False
+                    for th in compare_with_thresholds:
+                        if th['threshold'] == color:
+                            if not colored:
+                                service.log(time=self.timestamp(),
+                                            message=f"The following {color} thresholds were exceeded:", level="INFO"))
+                            appendage = calculate_appendage(th['target'])
+                            service.log(time=self.timestamp(), message=f"\"{th['request_name']}\" {th['target']}{appendage} with value {th['metric']}{appendage} exceeded threshold of {th[color]}{appendage}",
+                                        level="WARN")
                 service.log(time=self.timestamp(), message=hashlib.sha256(
                     "{} missed thresholds".format(self.args['simulation']).strip().encode('utf-8')).hexdigest(),
                             level='ERROR')
