@@ -228,7 +228,7 @@ class ReportPortal:
                                         parameters={'simulation': self.args['simulation'],
                                                     'test type': self.args['type']})
 
-                for color in ["yellow", "red"]
+                for color in ["yellow", "red"]:
                     colored = False
                     for th in compare_with_thresholds:
                         if th['threshold'] == color:

@@ -22,7 +22,7 @@ class JiraWrapper:
         self.missed_thresholds_rate = missed_thresholds_rate
         try:
             self.connect()
-        except Exception as e:
+        except Exception:
             self.valid = False
             return
         self.projects = [project.key for project in self.client.projects()]
