@@ -2,6 +2,7 @@ from time import time
 import datetime
 from influxdb import InfluxDBClient
 import numpy as np
+import operator
 
 SELECT_LAST_BUILD_DATA = "select * from api_comparison where build_id=\'{}\'"
 
@@ -18,6 +19,13 @@ SELECT_USERS_COUNT = "select sum(\"max\") from (select max(\"user_count\") from 
 
 SELECT_TEST_DATA = "select * from {} where build_id='{}'"
 
+SELECT_ALL_THRESHOLDS = "select * from thresholds where simulation='{}' {}"
+
+CALCULATE_TOTAL_THROUGHPUT = "select  sum(throughput) as \"throughput\", sum(ko) as \"ko\", sum(total) as \"total\" from api_comparison where build_id='{}'"
+
+CALCULATE_ALL_AGGREGATION = "select max(response_time), min(response_time), ROUND(MEAN(response_time)) as avg, PERCENTILE(response_time, 95) as pct95, PERCENTILE(response_time, 50) as pct50 from {} where build_id='{}'"
+
+COMPARISON_RULES = {"gte": "ge", "lte": "le", "gt": "gt", "lt": "lt", "eq": "eq"}
 
 class DataManager(object):
     def __init__(self, arguments):
@@ -147,18 +155,19 @@ class DataManager(object):
 
     def compare_with_thresholds(self):
         last_build = self.get_last_build()
-        last_build = self.append_thresholds_to_test_data(last_build)
-        compare_with_thresholds = []
-        comparison_metric = self.args['comparison_metric']
-        for request in last_build:
-            if request[comparison_metric + '_threshold'] is not 'green':
-                compare_with_thresholds.append({"request_name": request['request_name'],
-                                                "response_time": request[comparison_metric],
-                                                "threshold": request[comparison_metric + '_threshold'],
-                                                "yellow": request['yellow_threshold_value'],
-                                                "red": request["red_threshold_value"]})
-        missed_threshold_rate = round(float(len(compare_with_thresholds) / len(last_build)) * 100, 2)
-        return missed_threshold_rate, compare_with_thresholds
+        # last_build = self.append_thresholds_to_test_data(last_build)
+        # compare_with_thresholds = []
+        # comparison_metric = self.args['comparison_metric']
+        # for request in last_build:
+        #     if request[comparison_metric + '_threshold'] is not 'green':
+        #         compare_with_thresholds.append({"request_name": request['request_name'],
+        #                                         "response_time": request[comparison_metric],
+        #                                         "threshold": request[comparison_metric + '_threshold'],
+        #                                         "yellow": request['yellow_threshold_value'],
+        #                                         "red": request["red_threshold_value"]})
+        # missed_threshold_rate = round(float(len(compare_with_thresholds) / len(last_build)) * 100, 2)
+        # return missed_threshold_rate, compare_with_thresholds
+        return self.get_thresholds(last_build)
 
     def get_baseline(self):
         users = str(self.get_user_count())
@@ -180,6 +189,75 @@ class DataManager(object):
         test_data = self.client.query(SELECT_LAST_BUILD_DATA.format(self.args['build_id']))
         self.last_build_data = list(test_data.get_points())
         return self.last_build_data
+
+    def compare_request_and_threhold(self, request, threshold):
+        comparison_method = getattr(operator, COMPARISON_RULES[threshold['comparison']])
+        if threshold['target'] == 'response_time':
+            metric = request[threshold['aggregation']]
+        elif threshold['target'] == 'throughput':
+            metric = request['throughput']
+        else:  # Will be in case error_rate is set as target
+            metric = request['ko'] / request['total']
+        if comparison_method(metric, threshold['red']):
+            return "red", metric
+        if comparison_method(metric, threshold['yellow']):
+            return "yellow", metric
+        return "green", metric
+    
+    def aggregate_test(self):
+        self.client.switch_database(self.args['influx_db'])
+        all_metics: list = list(self.client.query(CALCULATE_ALL_AGGREGATION.format(self.args['simulation'], self.args['build_id'])).get_points())
+        self.client.switch_database(self.args['comparison_db'])
+        tp: list = list(self.client.query(CALCULATE_TOTAL_THROUGHPUT.format(self.args['build_id'])).get_points())
+        aggregated_dict = all_metics[0]
+        aggregated_dict['throughput'] = tp[0]['throughput']
+        aggregated_dict['ko'] = tp[0]['ko']
+        aggregated_dict['total'] = tp[0]['total']
+        aggregated_dict['request_name'] = 'all'
+        return aggregated_dict        
+
+    def get_thresholds(self, test):
+        compare_with_thresholds = []
+        total_checked = 0
+        def compile_violation(request, th, total_checked, compare_with_thresholds):
+            total_checked += 1
+            color, metric = self.compare_request_and_threhold(request, th)
+            if color is not "green":
+                compare_with_thresholds.append({
+                    "request_name": request['request_name'],
+                    "target": th['target'],
+                    "aggregation": th["aggregation"],
+                    "metric": metric,
+                    "threshold": color,
+                    "yellow": th['yellow'],
+                    "red": th["red"]
+                })
+            return total_checked, compare_with_thresholds
+        self.client.switch_database(self.args['thresholds_db'])
+        globaly_applicable: list = list(self.client.query(SELECT_ALL_THRESHOLDS.format(str(test[0]['simulation']), "AND scope='all'")).get_points())
+        every_applicable: list = list(self.client.query(SELECT_ALL_THRESHOLDS.format(str(test[0]['simulation']), "AND scope='every'")).get_points())
+        individual: list = list(self.client.query(SELECT_ALL_THRESHOLDS.format(str(test[0]['simulation']), "AND scope!='all' AND scope!='every'")).get_points())
+        individual_dict:dict = dict()
+        for each in individual:
+            if each['scope'] not in individual_dict:
+                individual_dict[each['scope']] = []
+            individual_dict[each['scope']].append(each)
+        for request in test:
+            thresholds = every_applicable
+            if request['request_name'] in individual_dict:
+                thresholds.extend(individual_dict[request['request_name']])
+            for th in thresholds:
+                _checked, compare_with_thresholds = compile_violation(request, th, total_checked, compare_with_thresholds)
+                total_checked += _checked
+        if globaly_applicable:
+            test_data = self.aggregate_test()
+            for th in globaly_applicable:
+                _checked, compare_with_thresholds = compile_violation(test_data, th, total_checked, compare_with_thresholds)
+                total_checked += _checked
+        violation = 0
+        if total_checked:
+            violation = round(float(len(compare_with_thresholds) / total_checked) * 100, 2)
+        return violation, compare_with_thresholds
 
     def append_thresholds_to_test_data(self, test):
         self.client.switch_database(self.args['thresholds_db'])
@@ -210,3 +288,19 @@ class DataManager(object):
 
             test_data_with_thresholds.append(request_data)
         return test_data_with_thresholds
+
+
+# if __name__ == "__main__":
+#     arguments = {
+#         "influx_host": "localhost",
+#         "influx_port": 8086,
+#         "influx_user": "",
+#         "influx_password": "",
+#         "influx_db": "jmeter",
+#         "simulation": "Flood",
+#         "comparison_db": "comparison",
+#         "thresholds_db": "thresholds",
+#         "build_id": "build_8a863dcc-4be6-4853-bdba-29a01e4d11c7"
+#     }
+#     dm = DataManager(arguments)
+#     print(dm.get_thresholds(dm.get_last_build()))
