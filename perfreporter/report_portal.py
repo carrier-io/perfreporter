@@ -234,7 +234,7 @@ class ReportPortal:
                         if th['threshold'] == color:
                             if not colored:
                                 service.log(time=self.timestamp(),
-                                            message=f"The following {color} thresholds were exceeded:", level="INFO"))
+                                            message=f"The following {color} thresholds were exceeded:", level="INFO")
                             appendage = calculate_appendage(th['target'])
                             service.log(time=self.timestamp(), message=f"\"{th['request_name']}\" {th['target']}{appendage} with value {th['metric']}{appendage} exceeded threshold of {th[color]}{appendage}",
                                         level="WARN")
