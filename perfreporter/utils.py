@@ -4,4 +4,4 @@ def calculate_appendage(metric):
     elif metric == "response_time":
         return " ms"
     else:
-        return ""
+        return " %"
