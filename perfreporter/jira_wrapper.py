@@ -182,7 +182,9 @@ class JiraWrapper:
                         description += f"h3. The following {color} thresholds were exceeded:\n"
                         colored = True    
                     appendage = calculate_appendage(th['target'])
-                    descriprion += f"\"{th['request_name']}\" {th['target']}{appendage} with value {th['metric']}{appendage} exceeded threshold of {th[color]}{appendage}"
+                    description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
+                                   f"with value {th['metric']}{appendage} " \
+                                   f"exceeded threshold of {th[color]}{appendage}\n"
         description += "{panel}"
         return description
 
