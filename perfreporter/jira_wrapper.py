@@ -2,6 +2,7 @@ from jira import JIRA
 import hashlib
 import io
 
+from perfreporter.utils import calculate_appendage
 
 class JiraWrapper:
     JIRA_REQUEST = 'project={} AND labels in ({})'
@@ -21,7 +22,7 @@ class JiraWrapper:
         self.missed_thresholds_rate = missed_thresholds_rate
         try:
             self.connect()
-        except Exception as e:
+        except Exception:
             self.valid = False
             return
         self.projects = [project.key for project in self.client.projects()]
@@ -173,24 +174,17 @@ class JiraWrapper:
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
             .format(missed_threshold_rate) + "{color} \n"
-        for request in compare_with_thresholds:
-            if request['threshold'] == 'yellow':
-                description += "h3. The following requests exceeded the yellow threshold:\n"
-                break
-        for request in compare_with_thresholds:
-            if request['threshold'] == 'yellow':
-                description += "\"" + request['request_name'] + "\" reached " + str(request['response_time'])\
-                               + " ms by " + arguments['comparison_metric'] + ". Threshold - " + str(request['yellow'])\
-                               + " ms.\n"
-        for request in compare_with_thresholds:
-            if request['threshold'] == 'red':
-                description += "h3. The following requests exceeded the red threshold:\n"
-                break
-        for request in compare_with_thresholds:
-            if request['threshold'] == 'red':
-                description += "\"" + request['request_name'] + "\" reached " + str(request['response_time'])\
-                               + " ms by " + arguments['comparison_metric'] + ". Threshold - " + str(request['red'])\
-                               + " ms.\n"
+        for color in ['yellow', 'red']:
+            colored = False
+            for th in compare_with_thresholds:
+                if th['threshold'] == color:
+                    if not colored:
+                        description += f"h3. The following {color} thresholds were exceeded:\n"
+                        colored = True    
+                    appendage = calculate_appendage(th['target'])
+                    description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
+                                   f"with value {th['metric']}{appendage} " \
+                                   f"exceeded threshold of {th[color]}{appendage}\n"
         description += "{panel}"
         return description
 
