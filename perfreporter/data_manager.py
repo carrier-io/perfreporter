@@ -331,12 +331,12 @@ class DataManager(object):
                     thresholds.append(th)
             for th in thresholds:
                 total_checked, total_violated, compare_with_thresholds = compile_violation(
-                    request, th, total_checked, compare_with_thresholds, add_green)
+                    request, th, total_checked, total_violated, compare_with_thresholds, add_green)
         if globaly_applicable:
             test_data = self.aggregate_test()
             for th in globaly_applicable:
                 total_checked, total_violated, compare_with_thresholds = compile_violation(
-                    test_data, th, total_checked, compare_with_thresholds, add_green)
+                    test_data, th, total_checked, total_violated, compare_with_thresholds, add_green)
         violated = 0
         if total_checked:
             violated = round(float(total_violated / total_checked) * 100, 2)
@@ -457,7 +457,7 @@ class DataManager(object):
             tests_data.append(list(test_data.values()))
         return tests_data
 
-#
+
 # if __name__ == "__main__":
 #     arguments = {
 #         "influx_host": "localhost",
@@ -471,6 +471,4 @@ class DataManager(object):
 #         "build_id": "build_8a863dcc-4be6-4853-bdba-29a01e4d11c7"
 #     }
 #     dm = DataManager(arguments)
-#     violation, points = dm.get_thresholds(dm.get_last_build())
-#     print(points)
-#     print(len(points))
+#     print(dm.get_thresholds(dm.get_last_build()))
