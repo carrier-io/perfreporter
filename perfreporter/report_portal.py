@@ -141,8 +141,6 @@ class ReportPortal:
                                             start_time=self.timestamp(),
                                             item_type="STEP",
                                             parameters={"simulation": self.args['simulation'],
-                                                        'duration': int(self.args['end_time'])/1000
-                                                        - int(self.args['start_time'])/1000,
                                                         'test type': self.args['type']})
 
                     self.log_message(service, 'Request name', errors[key], 'WARN')
@@ -222,7 +220,7 @@ class ReportPortal:
                 service.start_test_item(name="Test \"{}\" failed with missed thresholds rate {}"
                                         .format(self.args['simulation'], missed_threshold_rate),
                                         description='Missed thresholds in Test: {}'.format(self.args['simulation']),
-                                        tags=[self.args['type'], 'missed thresholds', 'gatling_test'],
+                                        tags=[self.args['type'], 'missed thresholds'],
                                         start_time=self.timestamp(),
                                         item_type="STEP",
                                         parameters={'simulation': self.args['simulation'],
