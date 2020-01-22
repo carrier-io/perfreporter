@@ -65,9 +65,11 @@ class Reporter(object):
         return rp_service, jira_service
 
     @staticmethod
-    def report_errors(aggregated_errors, rp_service, jira_service):
-        if rp_service and rp_service.check_functional_errors:
-            rp_service.report_errors(aggregated_errors)
+    def report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
+                      missed_threshold_rate, compare_with_thresholds):
+        if rp_service:
+            rp_service.report_test_results(aggregated_errors, performance_degradation_rate, compare_with_baseline,
+                                           missed_threshold_rate, compare_with_thresholds)
 
         if jira_service and jira_service.check_functional_errors:
             jira_service.connect()
@@ -78,8 +80,8 @@ class Reporter(object):
 
     @staticmethod
     def report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service, jira_service):
-        if rp_service and rp_service.check_performance_degradation:
-            rp_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
+       # if rp_service and rp_service.check_performance_degradation:
+       #    rp_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
         if jira_service and jira_service.check_performance_degradation:
             jira_service.connect()
@@ -91,8 +93,8 @@ class Reporter(object):
 
     @staticmethod
     def report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service):
-        if rp_service and rp_service.check_missed_thresholds:
-            rp_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
+        #if rp_service and rp_service.check_missed_thresholds:
+        #   rp_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
 
         if jira_service and jira_service.check_missed_thresholds:
             jira_service.connect()
