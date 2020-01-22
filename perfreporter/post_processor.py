@@ -19,7 +19,8 @@ class PostProcessor:
                 f.write(self.config_file)
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
-        reporter.report_errors(aggregated_errors, rp_service, jira_service)
+        performance_degradation_rate, missed_threshold_rate = 0, 0
+        compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
             data_manager.write_comparison_data_to_influx()
             performance_degradation_rate, compare_with_baseline = data_manager.compare_with_baseline()
@@ -27,6 +28,8 @@ class PostProcessor:
             reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                     jira_service)
             reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
+        reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
+                               compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
 
     def distributed_mode_post_processing(self, galloper_url, results_bucket, prefix):
         errors = []

@@ -119,25 +119,30 @@ class ReportPortal:
         else:
             return str(entry['Request name'])
 
-    def report_errors(self, errors):
+    def report_test_results(self, errors, performance_degradation_rate, compare_with_baseline, missed_threshold_rate, compare_with_thresholds):
         with self.no_ssl_verification():
             self.create_project()
             service = ReportPortalServiceAsync(endpoint=self.rp_url, project=self.rp_project,
                                                token=self.rp_token, error_handler=self.my_error_handler)
 
+            # Start launch.
+            service.start_launch(name=self.rp_launch_name + ": performance testing results",
+                                 start_time=self.timestamp(),
+                                 description='Test name - {}'.format(self.args['simulation']))
             errors_len = len(errors)
+
             if errors_len > 0:
-                # Start launch.
-                service.start_launch(name=self.rp_launch_name + ": functional errors",
-                                     start_time=self.timestamp(),
-                                     description='This simulation has {} fails'.format(errors_len))
+                service.start_test_item(name="Functional errors",
+                                        start_time=self.timestamp(),
+                                        description="This simulation has failed requests",
+                                        item_type="SUITE")
                 for key in errors:
                     # Start test item.
                     item_name = self.get_item_name(errors[key])
                     service.start_test_item(name=item_name,
                                             description="This request was failed {} times".format(
                                                 errors[key]['Error count']),
-                                            tags=[self.args['type'], errors[key]['Request URL'], 'gatling_test'],
+                                            tags=[errors[key]['Request URL']],
                                             start_time=self.timestamp(),
                                             item_type="STEP",
                                             parameters={"simulation": self.args['simulation'],
@@ -156,97 +161,91 @@ class ReportPortal:
                                              errors[key]['Response code'])
 
                     service.finish_test_item(end_time=self.timestamp(), status="FAILED")
+                service.finish_test_item(end_time=self.timestamp(), status="FAILED")
             else:
-                service.start_launch(name=self.rp_launch_name + ": functional errors",
-                                     start_time=self.timestamp(),
-                                     description='This simulation has no fails')
-
-            # Finish launch.
-            service.finish_launch(end_time=self.timestamp())
-
-            service.terminate()
-
-    def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
-        with self.no_ssl_verification():
-            self.create_project()
-            service = ReportPortalServiceAsync(endpoint=self.rp_url, project=self.rp_project,
-                                               token=self.rp_token, error_handler=self.my_error_handler)
-            if performance_degradation_rate > self.performance_degradation_rate:
-                service.start_launch(name=self.rp_launch_name + ": compare with baseline",
-                                     start_time=self.timestamp(),
-                                     description='Performance degradation in Test: {}'.format(self.args['simulation']))
-                service.start_test_item(name="Test \"{}\" failed with performance degradation rate {}"
-                                        .format(self.args['simulation'], performance_degradation_rate),
-                                        description='Performance degradation in Test: {}'.format(self.args['simulation']),
-                                        tags=[self.args['type'], 'performance degradation', 'gatling_test'],
+                service.start_test_item(name="Functional errors",
                                         start_time=self.timestamp(),
                                         item_type="STEP",
-                                        parameters={'simulation': self.args['simulation'],
-                                                    'test type': self.args['type']})
+                                        description='This simulation has no functional errors')
+                service.finish_test_item(end_time=self.timestamp(), status="PASSED")
+
+            if performance_degradation_rate > self.performance_degradation_rate:
+                service.start_test_item(name="Compare to baseline",
+                                        start_time=self.timestamp(),
+                                        description="Test \"{}\" failed with performance degradation rate {}"
+                                        .format(self.args['simulation'], performance_degradation_rate),
+                                        item_type="SUITE")
 
                 service.log(time=self.timestamp(),
                             message="The following requests are slower than baseline:",
                             level="{}".format('INFO'))
                 for request in compare_with_baseline:
+                    service.start_test_item(name="\"{}\" reached {} ms by {}. Baseline {} ms."
+                                .format(request['request_name'], request['response_time'],
+                                        self.args['comparison_metric'], request['baseline']),
+                                            tags=['performance degradation'],
+                                            start_time=self.timestamp(),
+                                            item_type="STEP",
+                                            parameters={'simulation': self.args['simulation'],
+                                                        'test type': self.args['type']})
+
                     service.log(time=self.timestamp(), message="\"{}\" reached {} ms by {}. Baseline {} ms."
                                 .format(request['request_name'], request['response_time'],
                                         self.args['comparison_metric'], request['baseline']),
                                 level="{}".format('WARN'))
-
+                    service.finish_test_item(end_time=self.timestamp(), status="FAILED")
                 service.log(time=self.timestamp(), message=hashlib.sha256(
                     "{} performance degradation".format(self.args['simulation']).strip().encode('utf-8')).hexdigest(),
                             level='ERROR')
+
                 service.finish_test_item(end_time=self.timestamp(), status="FAILED")
             else:
-                service.start_launch(name=self.rp_launch_name + ": compare with baseline",
-                                     start_time=self.timestamp(),
-                                     description='Performance degradation rate less than {}'
-                                     .format(self.performance_degradation_rate))
-
-                # Finish launch.
-            service.finish_launch(end_time=self.timestamp())
-
-            service.terminate()
-
-    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
-        with self.no_ssl_verification():
-            self.create_project()
-            service = ReportPortalServiceAsync(endpoint=self.rp_url, project=self.rp_project,
-                                               token=self.rp_token, error_handler=self.my_error_handler)
-            if missed_threshold_rate > self.missed_thresholds_rate:
-                service.start_launch(name=self.rp_launch_name + ": compare with thresholds",
-                                     start_time=self.timestamp(),
-                                     description='Missed thresholds in Test: {}'.format(self.args['simulation']))
-                service.start_test_item(name="Test \"{}\" failed with missed thresholds rate {}"
-                                        .format(self.args['simulation'], missed_threshold_rate),
-                                        description='Missed thresholds in Test: {}'.format(self.args['simulation']),
-                                        tags=[self.args['type'], 'missed thresholds'],
+                service.start_test_item(name="Compare to baseline",
                                         start_time=self.timestamp(),
                                         item_type="STEP",
-                                        parameters={'simulation': self.args['simulation'],
-                                                    'test type': self.args['type']})
+                                        description='Performance degradation rate less than {}'
+                                        .format(self.performance_degradation_rate))
+                service.finish_test_item(end_time=self.timestamp(), status="PASSED")
+
+            if missed_threshold_rate > self.missed_thresholds_rate:
+                service.start_test_item(name="Compare with thresholds",
+                                        start_time=self.timestamp(),
+                                        description="Test \"{}\" failed with missed thresholds rate {}"
+                                                    .format(self.args['simulation'], missed_threshold_rate),
+                                        item_type="SUITE")
 
                 for color in ["yellow", "red"]:
                     colored = False
                     for th in compare_with_thresholds:
                         if th['threshold'] == color:
+                            service.start_test_item(name="{} threshold for  \"{}\""
+                                                    .format(color, th['request_name']),
+                                                    tags=['missed thresholds'],
+                                                    start_time=self.timestamp(),
+                                                    item_type="STEP",
+                                                    parameters={'simulation': self.args['simulation'],
+                                                                'test type': self.args['type']})
                             if not colored:
                                 service.log(time=self.timestamp(),
                                             message=f"The following {color} thresholds were exceeded:", level="INFO")
                             appendage = calculate_appendage(th['target'])
-                            service.log(time=self.timestamp(), message=f"\"{th['request_name']}\" {th['target']}{appendage} with value {th['metric']}{appendage} exceeded threshold of {th[color]}{appendage}",
+                            service.log(time=self.timestamp(),
+                                        message=f"\"{th['request_name']}\" {th['target']}{appendage} with value {th['metric']}{appendage} exceeded threshold of {th[color]}{appendage}",
                                         level="WARN")
+                            service.finish_test_item(end_time=self.timestamp(), status="FAILED")
                 service.log(time=self.timestamp(), message=hashlib.sha256(
                     "{} missed thresholds".format(self.args['simulation']).strip().encode('utf-8')).hexdigest(),
                             level='ERROR')
+
                 service.finish_test_item(end_time=self.timestamp(), status="FAILED")
             else:
-                service.start_launch(name=self.rp_launch_name + ": compare with thresholds",
-                                     start_time=self.timestamp(),
-                                     description='Missed thresholds rate less than {}'
-                                     .format(self.missed_thresholds_rate))
-
-                # Finish launch.
+                service.start_test_item(name="Compare with thresholds",
+                                        start_time=self.timestamp(),
+                                        item_type="STEP",
+                                        description='Missed thresholds rate less than {}'
+                                        .format(self.missed_thresholds_rate))
+                service.finish_test_item(end_time=self.timestamp(), status="PASSED")
+            # Finish launch.
             service.finish_launch(end_time=self.timestamp())
 
             service.terminate()
