@@ -168,7 +168,6 @@ class ReportPortal:
                                         item_type="STEP",
                                         description='This simulation has no functional errors')
                 service.finish_test_item(end_time=self.timestamp(), status="PASSED")
-                service.finish_test_item(end_time=self.timestamp(), status="PASSED")
 
             if performance_degradation_rate > self.performance_degradation_rate:
                 service.start_test_item(name="Compare to baseline",
