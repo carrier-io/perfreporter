@@ -1,5 +1,6 @@
 import csv
 from difflib import SequenceMatcher
+from os import path
 
 
 FIELDNAMES = 'error_key', 'request_name', 'method', "status_code", "url", "error_message", "params", "headers", "body"
@@ -12,10 +13,12 @@ class ErrorLogParser(object):
         self.args = arguments
 
     def parse_errors(self):
-        path = self.args['error_logs'] + self.args['simulation'] + ".log"
+        log_file = self.args['error_logs'] + self.args['simulation'] + ".log"
         unparsed_counter = 0
         aggregated_errors = {}
-        with open(path, 'r+', encoding="utf-8") as tsv:
+        if not path.exists(log_file):
+            return aggregated_errors
+        with open(log_file, 'r+', encoding="utf-8") as tsv:
             for entry in csv.DictReader(tsv, delimiter="\t", fieldnames=FIELDNAMES, restval="not_found"):
                 try:
                     data = {'request_name': entry['request_name'].replace("Request name: ", ""),
