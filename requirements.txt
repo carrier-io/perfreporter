@@ -4,3 +4,4 @@ requests==2.19.1
 PyYAML==3.13
 influxdb==5.2.0
 numpy==1.16.0
+junit-xml==1.8
