@@ -15,6 +15,7 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors):
+        junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
         if self.config_file:
             with open("/tmp/config.yaml", "w") as f:
@@ -30,14 +31,15 @@ class PostProcessor:
             reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                     jira_service)
             reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
-        else:
+        reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
+                               compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
+
+        if junit_report:
             parser = JTLParser()
             results = parser.parse_jtl()
             aggregated_requests = results['requests']
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
-        reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
-                               compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
 
     def distributed_mode_post_processing(self, galloper_url, results_bucket, prefix):
         errors = []
