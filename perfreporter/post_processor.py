@@ -14,12 +14,14 @@ class PostProcessor:
     def __init__(self, config_file=None):
         self.config_file = config_file
 
-    def post_processing(self, args, aggregated_errors):
+    def post_processing(self, args, aggregated_errors, galloper_url=None):
         junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
         if self.config_file:
             with open("/tmp/config.yaml", "w") as f:
                 f.write(self.config_file)
+        if not galloper_url:
+            galloper_url = environ.get("galloper_url")
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
         performance_degradation_rate, missed_threshold_rate = 0, 0
@@ -31,6 +33,8 @@ class PostProcessor:
             reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                     jira_service)
             reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
+            r = requests.get(f'{galloper_url}/report/create?build_id={args["build_id"]}&lg_type={args["influx_db"]}&test_name={args["simulation"]}')
+            print(r.text)
         reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
 
@@ -67,7 +71,7 @@ class PostProcessor:
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors)
+        self.post_processing(args, aggregated_errors, galloper_url)
 
     @staticmethod
     def aggregate_errors(test_errors):
