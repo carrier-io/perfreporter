@@ -33,8 +33,9 @@ class PostProcessor:
             reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                     jira_service)
             reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
-            r = requests.get(f'{galloper_url}/report/create?build_id={args["build_id"]}&lg_type={args["influx_db"]}&test_name={args["simulation"]}')
-            print(r.text)
+            if galloper_url:
+                r = requests.get(f'{galloper_url}/report/create?build_id={args["build_id"]}&lg_type={args["influx_db"]}&test_name={args["simulation"]}')
+                print(r.text)
         reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
 
