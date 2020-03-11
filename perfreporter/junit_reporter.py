@@ -35,3 +35,30 @@ class JUnit_reporter(object):
         test_suites.append(TestSuite("Thresholds ", threshold_test_cases))
         with open("/tmp/reports/jmeter.xml", 'w') as f:
             TestSuite.to_file(f, test_suites, prettyprint=True)
+
+    @staticmethod
+    def create_report(thresholds, prefix):
+        path = "/tmp/junit_report_{}.xml".format(prefix)
+        test_suites = []
+        threshold_test_cases = []
+        mapping = {
+            'response_time': 'ms',
+            'throughput': 'req/s',
+            'error_rate': '%'
+        }
+        for th in thresholds:
+            threshold_test_cases.append(TestCase(name=f'Threshold for {th["request_name"]}, target - {th["target"]}',
+                                                 stdout=f'Value: {str(th["metric"])} {mapping.get(th["target"])}. '
+                                                        f'Yellow threshold: {th["yellow"]} {mapping.get(th["target"])},'
+                                                        f' red threshold: {th["red"]} {mapping.get(th["target"])}'))
+
+            if th['threshold'] != 'green':
+                threshold_test_cases[-1].add_failure_info(f'{th["target"]} for {th["request_name"]} exceeded '
+                                                          f'{th["threshold"]} threshold of {th.get(th["threshold"])} '
+                                                          f'{mapping.get(th["target"])}. Test result - '
+                                                          f'{str(th["metric"])} {mapping.get(th["target"])}')
+
+        test_suites.append(TestSuite("Thresholds ", threshold_test_cases))
+        with open(path, 'w') as f:
+            TestSuite.to_file(f, test_suites, prettyprint=True)
+        return path
