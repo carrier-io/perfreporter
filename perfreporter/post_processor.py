@@ -14,7 +14,8 @@ class PostProcessor:
     def __init__(self, config_file=None):
         self.config_file = config_file
 
-    def post_processing(self, args, aggregated_errors, galloper_url=None, junit_report=False, results_bucket=None, prefix=None):
+    def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
+                        junit_report=False, results_bucket=None, prefix=None):
         if not junit_report:
             junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
@@ -23,6 +24,8 @@ class PostProcessor:
                 f.write(self.config_file)
         if not galloper_url:
             galloper_url = environ.get("galloper_url")
+        if not project_id:
+            project_id = environ.get("project_id")
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
         performance_degradation_rate, missed_threshold_rate = 0, 0
@@ -45,7 +48,11 @@ class PostProcessor:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
                         'missed': int(missed_threshold_rate)}
                 headers = {'content-type': 'application/json'}
-                r = requests.put(f'{galloper_url}/api/report', json=data, headers=headers)
+                if project_id:
+                    url = f'{galloper_url}/api/v1/reports/{project_id}'
+                else:
+                    url = f'{galloper_url}/api/report'
+                r = requests.put(url, json=data, headers=headers)
                 print(r.text)
         reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
@@ -57,7 +64,7 @@ class PostProcessor:
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
 
-    def distributed_mode_post_processing(self, galloper_url, results_bucket, prefix, junit=False):
+    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False):
         errors = []
         args = {}
         # get list of files
@@ -83,7 +90,7 @@ class PostProcessor:
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors, galloper_url, junit, results_bucket, prefix)
+        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix)
 
     @staticmethod
     def aggregate_errors(test_errors):
