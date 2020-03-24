@@ -78,7 +78,7 @@ class PostProcessor:
             files = []
             for each in r.json():
                 if each["name"].startswith(prefix):
-                     files.append(each["name"])
+                    files.append(each["name"])
         else:
             r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}')
             pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
