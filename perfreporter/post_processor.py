@@ -103,9 +103,9 @@ class PostProcessor:
 
             # delete file from minio
             if project_id:
-                requests.get(f'{bucket_path}/{file}/delete')
-            else:
                 requests.delete(f'{bucket_path}/file?fname[]={file}')
+            else:
+                requests.get(f'{bucket_path}/{file}/delete')
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
@@ -157,4 +157,3 @@ class PostProcessor:
                                    "threshold": rt_threshold, "status": "PASSED", "metric": "ms"})
 
         return thresholds
-
