@@ -42,7 +42,11 @@ class PostProcessor:
                 violations, thresholds = data_manager.get_thresholds(last_build, True)
                 report = JUnit_reporter.create_report(thresholds, prefix)
                 files = {'file': open(report, 'rb')}
-                requests.post(f'{galloper_url}/artifacts/{results_bucket}/upload', allow_redirects=True, files=files)
+                if project_id:
+                    upload_url = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}/file'
+                else:
+                    upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
+                requests.post(upload_url, allow_redirects=True, files=files)
                 junit_report = None
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
@@ -68,13 +72,25 @@ class PostProcessor:
         errors = []
         args = {}
         # get list of files
-        r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}')
-        pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
-        files = re.findall(pattern, r.text)
+        if project_id:
+            r = requests.get(f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}',
+                             headers={"Content-type": "application/json"})
+            files = []
+            for each in r.json():
+                if each["name"].startswith(prefix):
+                    files.append(each["name"])
+        else:
+            r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}')
+            pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
+            files = re.findall(pattern, r.text)
 
         # download and unpack each file
+        if project_id:
+            bucket_path = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}'
+        else:
+            bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
         for file in files:
-            downloaded_file = requests.get(f'{galloper_url}/artifacts/{results_bucket}/{file}')
+            downloaded_file = requests.get(f'{bucket_path}/{file}')
             with open(f"/tmp/{file}", 'wb') as f:
                 f.write(downloaded_file.content)
             shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
@@ -86,7 +102,10 @@ class PostProcessor:
                     args = json.loads(f.read())
 
             # delete file from minio
-            requests.get(f'{galloper_url}/artifacts/{results_bucket}/{file}/delete')
+            if project_id:
+                requests.get(f'{bucket_path}/{file}/delete')
+            else:
+                requests.delete(f'{bucket_path}/file?fname[]={file}')
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
