@@ -15,7 +15,7 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        junit_report=False, results_bucket=None, prefix=None):
+                        junit_report=False, results_bucket=None, prefix=None, token=None):
         if not junit_report:
             junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
@@ -26,6 +26,9 @@ class PostProcessor:
             galloper_url = environ.get("galloper_url")
         if not project_id:
             project_id = environ.get("project_id")
+        if not token:
+            token = environ.get("token")
+        headers = {'Authorization': f'bearer {token}'} if token else {}
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
         performance_degradation_rate, missed_threshold_rate = 0, 0
@@ -46,17 +49,16 @@ class PostProcessor:
                     upload_url = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}/file'
                 else:
                     upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
-                requests.post(upload_url, allow_redirects=True, files=files)
+                requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
                 junit_report = None
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
                         'missed': int(missed_threshold_rate)}
-                headers = {'content-type': 'application/json'}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
                     url = f'{galloper_url}/api/report'
-                r = requests.put(url, json=data, headers=headers)
+                r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 print(r.text)
         reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
@@ -68,19 +70,20 @@ class PostProcessor:
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
 
-    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False):
+    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False, token=None):
         errors = []
         args = {}
         # get list of files
+        headers = {'Authorization': f'bearer {token}'} if token else {}
         if project_id:
             r = requests.get(f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}',
-                             headers={"Content-type": "application/json"})
+                             headers={**headers, 'Content-type': 'application/json'})
             files = []
             for each in r.json():
                 if each["name"].startswith(prefix):
                     files.append(each["name"])
         else:
-            r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}')
+            r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}', headers=headers)
             pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
             files = re.findall(pattern, r.text)
 
@@ -90,7 +93,7 @@ class PostProcessor:
         else:
             bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
         for file in files:
-            downloaded_file = requests.get(f'{bucket_path}/{file}')
+            downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
             with open(f"/tmp/{file}", 'wb') as f:
                 f.write(downloaded_file.content)
             shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
@@ -103,13 +106,13 @@ class PostProcessor:
 
             # delete file from minio
             if project_id:
-                requests.delete(f'{bucket_path}/file?fname[]={file}')
+                requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
             else:
-                requests.get(f'{bucket_path}/{file}/delete')
+                requests.get(f'{bucket_path}/{file}/delete', headers=headers)
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix)
+        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token)
 
     @staticmethod
     def aggregate_errors(test_errors):
