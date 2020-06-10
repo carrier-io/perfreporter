@@ -15,7 +15,7 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        junit_report=False, results_bucket=None, prefix=None, token=None):
+                        junit_report=False, results_bucket=None, prefix=None, token=None, jira=False):
         if not junit_report:
             junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
@@ -31,6 +31,12 @@ class PostProcessor:
         headers = {'Authorization': f'bearer {token}'} if token else {}
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
+        if not jira_service and jira:
+            if galloper_url and token and project_id:
+                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/jira"
+                jira_config = requests.get(secrets_url, headers={**headers, 'Content-type': 'application/json'}).json()
+                jira_service = reporter.get_jira_service(args, json.loads(jira_config["secret"].replace("'", "\"")))
+
         performance_degradation_rate, missed_threshold_rate = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
@@ -70,7 +76,8 @@ class PostProcessor:
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
 
-    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False, token=None):
+    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
+                                         token=None, jira=False):
         errors = []
         args = {}
         # get list of files
@@ -112,7 +119,8 @@ class PostProcessor:
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token)
+        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token,
+                             jira)
 
     @staticmethod
     def aggregate_errors(test_errors):

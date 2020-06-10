@@ -64,6 +64,17 @@ class Reporter(object):
 
         return rp_service, jira_service
 
+    def get_jira_service(self, args, jira_config):
+        for each in ["jira_url", "jira_login", "jira_password", "jira_project"]:
+            if not jira_config.get(each):
+                print("Jira configuration values missing, proceeding without Jira")
+                return None
+        jira_service = JiraWrapper(args, jira_config["jira_url"], jira_config["jira_login"],
+                                   jira_config["jira_password"], jira_config["jira_project"], jira_config["jira_login"],
+                                   True, True, True, 20, 50, jira_config.get("issue_type", "Bug"), "", "", None)
+                                   #jira_lables, jira_watchers, jira_epic_key)
+        return jira_service
+
     @staticmethod
     def report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
                       missed_threshold_rate, compare_with_thresholds):
