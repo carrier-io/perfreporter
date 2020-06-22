@@ -58,9 +58,10 @@ class Reporter(object):
                 print("Jira configuration values missing, proceeding without Jira")
             else:
                 jira_service = JiraWrapper(args, jira_url, jira_user, jira_pwd, jira_project, jira_assignee,
-                                           check_functional_errors, check_performance_degradation, check_missed_thresholds,
-                                           performance_degradation_rate, missed_thresholds_rate, jira_issue_type,
-                                           jira_labels, jira_watchers, jira_epic_key)
+                                           check_functional_errors, check_performance_degradation,
+                                           check_missed_thresholds, performance_degradation_rate,
+                                           missed_thresholds_rate, jira_issue_type, jira_labels, jira_watchers,
+                                           jira_epic_key)
 
         return rp_service, jira_service
 
