@@ -46,7 +46,7 @@ class Reporter(object):
             jira_project = config['jira'].get("jira_project", None)
             jira_assignee = config['jira'].get("assignee", None)
             jira_issue_type = config['jira'].get("issue_type", 'Bug')
-            jira_lables = config['jira'].get("labels", '')
+            jira_labels = config['jira'].get("labels", '')
             jira_watchers = config['jira'].get("watchers", '')
             jira_epic_key = config['jira'].get("epic_link", None)
             check_functional_errors = config['jira'].get("check_functional_errors", 'False')
@@ -58,11 +58,30 @@ class Reporter(object):
                 print("Jira configuration values missing, proceeding without Jira")
             else:
                 jira_service = JiraWrapper(args, jira_url, jira_user, jira_pwd, jira_project, jira_assignee,
-                                           check_functional_errors, check_performance_degradation, check_missed_thresholds,
-                                           performance_degradation_rate, missed_thresholds_rate, jira_issue_type,
-                                           jira_lables, jira_watchers, jira_epic_key)
+                                           check_functional_errors, check_performance_degradation,
+                                           check_missed_thresholds, performance_degradation_rate,
+                                           missed_thresholds_rate, jira_issue_type, jira_labels, jira_watchers,
+                                           jira_epic_key)
 
         return rp_service, jira_service
+
+    def get_jira_service(self, args, jira_config, jira_additional_config):
+        for each in ["jira_url", "jira_login", "jira_password", "jira_project"]:
+            if not jira_config.get(each):
+                print("Jira configuration values missing, proceeding without Jira")
+                return None
+        jira_service = JiraWrapper(args, jira_config["jira_url"], jira_config["jira_login"],
+                                   jira_config["jira_password"], jira_config["jira_project"],
+                                   jira_additional_config.get("assignee", jira_config["jira_login"]),
+                                   jira_additional_config.get("check_functional_errors", False),
+                                   jira_additional_config.get("check_performance_degradation", False),
+                                   jira_additional_config.get("check_missed_thresholds", False),
+                                   jira_additional_config.get("performance_degradation_rate", 20),
+                                   jira_additional_config.get("missed_thresholds_rate", 50),
+                                   jira_config.get("issue_type", "Bug"), jira_additional_config.get("jira_labels", ""),
+                                   jira_additional_config.get("jira_watchers", ""),
+                                   jira_additional_config.get("jira_epic_key", None))
+        return jira_service
 
     @staticmethod
     def report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,

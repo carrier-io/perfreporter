@@ -6,7 +6,7 @@ import requests
 import re
 import shutil
 from os import remove, environ
-import json
+from json import JSONDecodeError, loads
 
 
 class PostProcessor:
@@ -15,7 +15,8 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        junit_report=False, results_bucket=None, prefix=None, token=None):
+                        junit_report=False, results_bucket=None, prefix=None, token=None, integration=[],
+                        email_recipients=None):
         if not junit_report:
             junit_report = environ.get("junit_report")
         data_manager = DataManager(args)
@@ -31,6 +32,22 @@ class PostProcessor:
         headers = {'Authorization': f'bearer {token}'} if token else {}
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
+        if not jira_service and "jira" in integration:
+            if galloper_url and token and project_id:
+                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                try:
+                    jira_core_config = loads(requests.get(secrets_url + "jira",
+                                             headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                except (AttributeError, JSONDecodeError):
+                    jira_core_config = {}
+                try:
+                    jira_additional_config = loads(requests.get(secrets_url + "jira_perf_api",
+                                                                headers={**headers, 'Content-type': 'application/json'}
+                                                                ).json()["secret"])
+                except (AttributeError, JSONDecodeError):
+                    jira_additional_config = {}
+                jira_service = reporter.get_jira_service(args, jira_core_config, jira_additional_config)
+
         performance_degradation_rate, missed_threshold_rate = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
@@ -54,6 +71,7 @@ class PostProcessor:
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
                         'missed': int(missed_threshold_rate)}
+                headers = {'content-type': 'application/json'}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
@@ -69,8 +87,37 @@ class PostProcessor:
             aggregated_requests = results['requests']
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
+        if "email" in integration and email_recipients:
+            if galloper_url and token and project_id:
+                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                try:
+                    email_notification_id = requests.get(secrets_url + "email_notification_id",
+                                                               headers={'Authorization': f'bearer {token}',
+                                                                        'Content-type': 'application/json'}
+                                                               ).json()["secret"]
+                except (AttributeError, JSONDecodeError):
+                    email_notification_id = ""
+                if email_notification_id:
+                    emails = [x.strip() for x in email_recipients.split(",")]
+                    task_url = f"{galloper_url}/api/v1/task/{project_id}/{email_notification_id}"
+                    event = {
+                        "influx_host": args["influx_host"],
+                        "influx_port": args["influx_port"],
+                        "influx_user": args["influx_user"],
+                        "influx_password": args["influx_password"],
+                        "influx_db": args['influx_db'],
+                        "test": args['simulation'],
+                        "user_list": emails,
+                        "notification_type": "api",
+                        "test_type": args["type"],
+                        "users": data_manager.get_user_count()
+                    }
+                    print(event)
+                    res = requests.post(task_url, json=event, headers={**headers, 'Content-type': 'application/json'})
+                    print(res.text)
 
-    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False, token=None):
+    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
+                                         token=None, integration=[], email_recipients=None):
         errors = []
         args = {}
         # get list of files
@@ -99,10 +146,10 @@ class PostProcessor:
             shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
             remove(f"/tmp/{file}")
             with open(f"/tmp/{file}/".replace(".zip", "") + "aggregated_errors.json", "r") as f:
-                errors.append(json.loads(f.read()))
+                errors.append(loads(f.read()))
             if not args:
                 with open(f"/tmp/{file}/".replace(".zip", "") + "args.json", "r") as f:
-                    args = json.loads(f.read())
+                    args = loads(f.read())
 
             # delete file from minio
             if project_id:
@@ -112,7 +159,8 @@ class PostProcessor:
 
         # aggregate errors from each load generator
         aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token)
+        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token,
+                             integration, email_recipients)
 
     @staticmethod
     def aggregate_errors(test_errors):
