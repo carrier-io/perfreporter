@@ -71,6 +71,7 @@ class PostProcessor:
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
                         'missed': int(missed_threshold_rate)}
+                headers = {'content-type': 'application/json'}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
