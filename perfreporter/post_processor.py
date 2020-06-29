@@ -71,7 +71,6 @@ class PostProcessor:
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
                         'missed': int(missed_threshold_rate)}
-                headers = {'content-type': 'application/json'}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
@@ -113,7 +112,8 @@ class PostProcessor:
                         "users": data_manager.get_user_count()
                     }
                     print(event)
-                    res = requests.post(task_url, json=event, headers={**headers, 'Content-type': 'application/json'})
+                    res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
+                                                                        'Content-type': 'application/json'})
                     print(res.text)
 
     def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
