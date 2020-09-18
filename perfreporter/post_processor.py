@@ -48,6 +48,22 @@ class PostProcessor:
                     jira_additional_config = {}
                 jira_service = reporter.get_jira_service(args, jira_core_config, jira_additional_config)
 
+        if not rp_service and "report_portal" in integration:
+            if galloper_url and token and project_id:
+                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                try:
+                    rp_core_config = loads(requests.get(secrets_url + "rp",
+                                           headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                except (AttributeError, JSONDecodeError):
+                    rp_core_config = {}
+                try:
+                    rp_additional_config = loads(requests.get(secrets_url + "rp_perf_api",
+                                                              headers={**headers, 'Content-type': 'application/json'}
+                                                              ).json()["secret"])
+                except (AttributeError, JSONDecodeError):
+                    rp_additional_config = {}
+                rp_service = reporter.get_rp_service(args, rp_core_config, rp_additional_config)
+
         performance_degradation_rate, missed_threshold_rate = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
@@ -70,7 +86,7 @@ class PostProcessor:
                 junit_report = None
             if galloper_url:
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
-                        'missed': int(missed_threshold_rate)}
+                        'missed': int(missed_threshold_rate), 'status': 'Finished'}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:

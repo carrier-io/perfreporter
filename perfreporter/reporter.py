@@ -83,6 +83,31 @@ class Reporter(object):
                                    jira_additional_config.get("jira_epic_key", None))
         return jira_service
 
+    def get_rp_service(self, args, rp_config, rp_additional_config):
+        for each in ["rp_host", "rp_token", "rp_project"]:
+            if not rp_config.get(each):
+                print("RP configuration values missing, proceeding without RP")
+                return None
+        rp_project = rp_config['rp_project']
+        rp_url = rp_config['rp_host']
+        rp_token = rp_config['rp_token']
+        rp_launch_name = rp_additional_config.get('rp_launch_name', 'carrier')
+        check_functional_errors = rp_additional_config.get('check_functional_errors', 'False')
+        check_performance_degradation = rp_additional_config.get('check_performance_degradation', 'False')
+        check_missed_thresholds = rp_additional_config.get('check_missed_thresholds', 'False')
+        performance_degradation_rate = rp_additional_config.get('performance_degradation_rate', 20)
+        missed_thresholds_rate = rp_additional_config.get('missed_thresholds_rate', 50)
+        if not all([rp_project, rp_url, rp_token, rp_launch_name]):
+            print("ReportPortal configuration values missing, proceeding "
+                  "without report portal integration ")
+            return None
+        else:
+            rp_service = ReportPortal(args, rp_url, rp_token, rp_project, rp_launch_name, check_functional_errors,
+                                      check_performance_degradation, check_missed_thresholds,
+                                      performance_degradation_rate, missed_thresholds_rate)
+            rp_service.my_error_handler(sys.exc_info())
+        return rp_service
+
     @staticmethod
     def report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
                       missed_threshold_rate, compare_with_thresholds):
