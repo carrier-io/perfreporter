@@ -155,6 +155,7 @@ class DataManager(object):
         except Exception as e:
             print(e)
             print("Failed connection to " + self.args["influx_host"] + ", database - comparison")
+        return user_count, duration
 
     def get_api_test_info(self):
         tests_data = self.get_last_builds()
