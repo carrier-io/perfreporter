@@ -67,12 +67,16 @@ class PostProcessor:
         performance_degradation_rate, missed_threshold_rate = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
-            data_manager.write_comparison_data_to_influx()
+            users_count, duration = data_manager.write_comparison_data_to_influx()
             performance_degradation_rate, compare_with_baseline = data_manager.compare_with_baseline()
             missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
-            reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
-                                                    jira_service)
-            reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service)
+            try:
+                reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
+                                                        jira_service)
+                reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service,
+                                                  jira_service)
+            except Exception as e:
+                print(e)
             if junit_report:
                 last_build = data_manager.get_last_build()
                 violations, thresholds = data_manager.get_thresholds(last_build, True)
@@ -85,16 +89,21 @@ class PostProcessor:
                 requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
                 junit_report = None
             if galloper_url:
+
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
-                        'missed': int(missed_threshold_rate), 'status': 'Finished'}
+                        'missed': int(missed_threshold_rate), 'status': 'Finished', 'vusers': users_count,
+                        'duration': duration}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
                     url = f'{galloper_url}/api/report'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 print(r.text)
-        reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
-                               compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
+        try:
+            reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
+                                   compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
+        except Exception as e:
+            print(e)
 
         if junit_report:
             parser = JTLParser()
