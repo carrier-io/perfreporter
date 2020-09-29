@@ -13,10 +13,13 @@ class Reporter(object):
     @staticmethod
     def parse_config_file(args):
         report_types = []
-        with open(PATH_TO_CONFIG, "rb") as f:
-            config = yaml.load(f.read())
-        if config:
-            report_types = list(config.keys())
+        try:
+            with open(PATH_TO_CONFIG, "rb") as f:
+                config = yaml.load(f.read())
+            if config:
+                report_types = list(config.keys())
+        except:
+            return None, None
 
         rp_service = None
         if 'reportportal' in report_types:

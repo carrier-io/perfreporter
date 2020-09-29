@@ -7,6 +7,7 @@ import re
 import shutil
 from os import remove, environ
 from json import JSONDecodeError, loads
+from datetime import datetime
 
 
 class PostProcessor:
@@ -142,50 +143,101 @@ class PostProcessor:
                     print(res.text)
 
     def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
-                                         token=None, integration=[], email_recipients=None):
-        errors = []
-        args = {}
-        # get list of files
+                                         token=None, integration=[], email_recipients=None, report_id=None,
+                                         influx_host=None):
+
         headers = {'Authorization': f'bearer {token}'} if token else {}
-        if project_id:
-            r = requests.get(f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}',
-                             headers={**headers, 'Content-type': 'application/json'})
-            files = []
-            for each in r.json():
-                if each["name"].startswith(prefix):
-                    files.append(each["name"])
-        else:
-            r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}', headers=headers)
-            pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
-            files = re.findall(pattern, r.text)
+        if project_id and galloper_url and report_id and influx_host:
+            r = requests.get(f'{galloper_url}/api/v1/reports/{project_id}?report_id={report_id}',
+                             headers={**headers, 'Content-type': 'application/json'}).json()
+            start_time = r["start_time"]
+            end_time = str(datetime.now()).replace(" ", "T") + "Z"
+            args = {
+                'type': r['type'],
+                'simulation': r['name'],
+                'build_id': r['build_id'],
+                'env': r['environment'],
+                'influx_host': influx_host,
+                'influx_port': '8086',
+                'influx_user': '',
+                'influx_password': '',
+                'comparison_metric': 'pct95',
+                'influx_db': r['lg_type'],
+                'comparison_db': 'comparison',
+                'thresholds_db': 'thresholds',
+                'test_limit': 5
+            }
+            aggregated_errors = {}
+            r = requests.get(f'{galloper_url}/api/v1/chart/errors/table?test_name={args["simulation"]}&'
+                             f'start_time={start_time}&end_time={end_time}&low_value=0.00&high_value=100.00&'
+                             f'status=all&order=asc',
+                             headers={**headers, 'Content-type': 'application/json'}).json()
 
-        # download and unpack each file
-        if project_id:
-            bucket_path = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}'
-        else:
-            bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
-        for file in files:
-            downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
-            with open(f"/tmp/{file}", 'wb') as f:
-                f.write(downloaded_file.content)
-            shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
-            remove(f"/tmp/{file}")
-            with open(f"/tmp/{file}/".replace(".zip", "") + "aggregated_errors.json", "r") as f:
-                errors.append(loads(f.read()))
-            if not args:
-                with open(f"/tmp/{file}/".replace(".zip", "") + "args.json", "r") as f:
-                    args = loads(f.read())
+            for each in r:
+                aggregated_errors[each['Error key']] = {
+                    'Request name': each['Request name'],
+                    'Method': each['Method'],
+                    'Request headers': each['Headers'],
+                    'Error count': each['count'],
+                    'Response code': each['Response code'],
+                    'Request URL': each['URL'],
+                    'Request_params': [each['Request params']],
+                    'Response': [each['Response body']],
+                    'Error_message': [each['Error message']],
+                }
+            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token,
+                                 integration, email_recipients)
 
-            # delete file from minio
+        else:
+            errors = []
+            args = {}
+            # get list of files
             if project_id:
-                requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
+                r = requests.get(f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}',
+                                 headers={**headers, 'Content-type': 'application/json'})
+                files = []
+                for each in r.json():
+                    if each["name"].startswith(prefix):
+                        files.append(each["name"])
             else:
-                requests.get(f'{bucket_path}/{file}/delete', headers=headers)
+                r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}', headers=headers)
+                pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
+                files = re.findall(pattern, r.text)
 
-        # aggregate errors from each load generator
-        aggregated_errors = self.aggregate_errors(errors)
-        self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token,
-                             integration, email_recipients)
+            # download and unpack each file
+            if project_id:
+                bucket_path = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}'
+            else:
+                bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
+            for file in files:
+                downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
+                with open(f"/tmp/{file}", 'wb') as f:
+                    f.write(downloaded_file.content)
+                shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
+                remove(f"/tmp/{file}")
+                with open(f"/tmp/{file}/".replace(".zip", "") + "aggregated_errors.json", "r") as f:
+                    errors.append(loads(f.read()))
+                if not args:
+                    with open(f"/tmp/{file}/".replace(".zip", "") + "args.json", "r") as f:
+                        args = loads(f.read())
+
+                # delete file from minio
+                if project_id:
+                    requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
+                else:
+                    requests.get(f'{bucket_path}/{file}/delete', headers=headers)
+
+            # aggregate errors from each load generator
+            aggregated_errors = self.aggregate_errors(errors)
+
+            status = ""
+            if galloper_url and project_id and args.get("build_id"):
+                url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
+                r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
+                status = r["status"]
+            if status != "Finished":
+                self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
+                                     token, integration, email_recipients)
 
     @staticmethod
     def aggregate_errors(test_errors):
