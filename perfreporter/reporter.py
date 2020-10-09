@@ -113,7 +113,7 @@ class Reporter(object):
 
     @staticmethod
     def report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
-                      missed_threshold_rate, compare_with_thresholds):
+                      missed_threshold_rate, compare_with_thresholds, ado_reporter):
         if rp_service:
             rp_service.report_test_results(aggregated_errors, performance_degradation_rate, compare_with_baseline,
                                            missed_threshold_rate, compare_with_thresholds)
@@ -124,11 +124,12 @@ class Reporter(object):
                 jira_service.report_errors(aggregated_errors)
             else:
                 print("Failed connection to Jira or project does not exist")
+        if ado_reporter:
+            ado_reporter.report_functional_errors(aggregated_errors)
 
     @staticmethod
-    def report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service, jira_service):
-       # if rp_service and rp_service.check_performance_degradation:
-       #    rp_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
+    def report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service, jira_service,
+                                       ado_reporter):
 
         if jira_service and jira_service.check_performance_degradation:
             jira_service.connect()
@@ -137,11 +138,12 @@ class Reporter(object):
                     jira_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
             else:
                 print("Failed connection to Jira or project does not exist")
+        if ado_reporter and performance_degradation_rate > 20:
+            ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
     @staticmethod
-    def report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service):
-        #if rp_service and rp_service.check_missed_thresholds:
-        #   rp_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
+    def report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service, jira_service,
+                                 ado_reporter):
 
         if jira_service and jira_service.check_missed_thresholds:
             jira_service.connect()
@@ -150,3 +152,6 @@ class Reporter(object):
                     jira_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
             else:
                 print("Failed connection to Jira or project does not exist")
+        if ado_reporter and missed_threshold_rate > 50:
+            ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
+
