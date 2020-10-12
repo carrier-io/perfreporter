@@ -2,6 +2,7 @@ from perfreporter.data_manager import DataManager
 from perfreporter.reporter import Reporter
 from perfreporter.jtl_parser import JTLParser
 from perfreporter.junit_reporter import JUnit_reporter
+from perfreporter.ado_reporter import ADOReporter
 import requests
 import re
 import shutil
@@ -33,6 +34,7 @@ class PostProcessor:
         headers = {'Authorization': f'bearer {token}'} if token else {}
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
+        ado_reporter = None
         if not jira_service and "jira" in integration:
             if galloper_url and token and project_id:
                 secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
@@ -65,6 +67,17 @@ class PostProcessor:
                     rp_additional_config = {}
                 rp_service = reporter.get_rp_service(args, rp_core_config, rp_additional_config)
 
+        if "azure_devops" in integration:
+            if galloper_url and token and project_id:
+                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                try:
+                    ado_config = loads(requests.get(secrets_url + "ado",
+                                       headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                except (AttributeError, JSONDecodeError):
+                    ado_config = {}
+                if ado_config:
+                    ado_reporter = ADOReporter(ado_config, args)
+
         performance_degradation_rate, missed_threshold_rate = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
@@ -73,9 +86,9 @@ class PostProcessor:
             missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
             try:
                 reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
-                                                        jira_service)
+                                                        jira_service, ado_reporter)
                 reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service,
-                                                  jira_service)
+                                                  jira_service, ado_reporter)
             except Exception as e:
                 print(e)
             if junit_report:
@@ -102,7 +115,7 @@ class PostProcessor:
                 print(r.text)
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
-                                   compare_with_baseline, missed_threshold_rate, compare_with_thresholds)
+                                   compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter)
         except Exception as e:
             print(e)
 
