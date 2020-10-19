@@ -150,14 +150,14 @@ class PostProcessor:
                         "test_type": args["type"],
                         "users": data_manager.get_user_count()
                     }
-                    print(event)
                     res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
                                                                         'Content-type': 'application/json'})
+                    print("Email notification")
                     print(res.text)
 
     def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
                                          token=None, integration=[], email_recipients=None, report_id=None,
-                                         influx_host=None):
+                                         influx_host=None, influx_user='', influx_password=''):
 
         headers = {'Authorization': f'bearer {token}'} if token else {}
         if project_id and galloper_url and report_id and influx_host:
@@ -172,8 +172,8 @@ class PostProcessor:
                 'env': r['environment'],
                 'influx_host': influx_host,
                 'influx_port': '8086',
-                'influx_user': '',
-                'influx_password': '',
+                'influx_user': influx_user,
+                'influx_password': influx_password,
                 'comparison_metric': 'pct95',
                 'influx_db': r['lg_type'],
                 'comparison_db': 'comparison',
