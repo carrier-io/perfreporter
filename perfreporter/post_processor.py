@@ -21,7 +21,7 @@ class PostProcessor:
                         email_recipients=None):
         if not junit_report:
             junit_report = environ.get("junit_report")
-        data_manager = DataManager(args)
+        data_manager = DataManager(args, galloper_url, token, project_id)
         if self.config_file:
             with open("/tmp/config.yaml", "w") as f:
                 f.write(self.config_file)
@@ -148,6 +148,7 @@ class PostProcessor:
                         "user_list": emails,
                         "notification_type": "api",
                         "test_type": args["type"],
+                        "env": args["env"],
                         "users": data_manager.get_user_count()
                     }
                     res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
