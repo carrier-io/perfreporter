@@ -103,8 +103,8 @@ class PostProcessor:
                 requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
                 junit_report = None
             if galloper_url:
-
-                data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': args["influx_db"],
+                lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
+                data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
                         'missed': int(missed_threshold_rate), 'status': 'Finished', 'vusers': users_count,
                         'duration': duration}
                 if project_id:
@@ -144,6 +144,7 @@ class PostProcessor:
                         "influx_user": args["influx_user"],
                         "influx_password": args["influx_password"],
                         "influx_db": args['influx_db'],
+                        "comparison_db": args['comparison_db'],
                         "test": args['simulation'],
                         "user_list": emails,
                         "notification_type": "api",
@@ -176,9 +177,8 @@ class PostProcessor:
                 'influx_user': influx_user,
                 'influx_password': influx_password,
                 'comparison_metric': 'pct95',
-                'influx_db': r['lg_type'],
-                'comparison_db': 'comparison',
-                'thresholds_db': 'thresholds',
+                'influx_db': f"{r['lg_type']}_{project_id}",
+                'comparison_db': f'comparison_{project_id}',
                 'test_limit': 5
             }
             aggregated_errors = {}

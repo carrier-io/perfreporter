@@ -286,7 +286,6 @@ class DataManager(object):
             if color is not "green":
                 total_violated += 1
             return total_checked, total_violated, compare_with_thresholds
-        self.client.switch_database(self.args['thresholds_db'])
         globaly_applicable: list = list(filter(lambda _th: _th['scope'] == 'all', _thresholds))
         every_applicable: list = list(filter(lambda _th: _th['scope'] == 'every', _thresholds))
         individual: list = list(filter(lambda _th: _th['scope'] != 'every' and _th['scope'] != 'all', _thresholds))
