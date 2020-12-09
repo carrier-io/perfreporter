@@ -37,7 +37,7 @@ SELECT_THRESHOLDS = "select last(red) as red, last(yellow) as yellow from thresh
 SELECT_USERS_COUNT = "select sum(\"max\") from (select max(\"user_count\") from \"users\" where " \
                      "build_id='{}' group by lg_id)"
 
-SELECT_TEST_DATA = "select * from {} where build_id='{}'"
+SELECT_TEST_DATA = "select response_time, method, request_name, status_code, status from {} where build_id='{}'"
 
 SELECT_ALL_THRESHOLDS = "select * from thresholds where simulation='{}' {}"
 
@@ -105,10 +105,10 @@ class DataManager(object):
             else:
                 reqs[key]["NaN"] += 1
             reqs[key][req['status']] += 1
-            reqs[key]['simulation'] = req['simulation']
-            reqs[key]['test_type'] = req['test_type']
-            reqs[key]['env'] = req['env']
-            reqs[key]['build_id'] = req['build_id']
+            reqs[key]['simulation'] = self.args['simulation']
+            reqs[key]['test_type'] = self.args['type']
+            reqs[key]['env'] = self.args['env']
+            reqs[key]['build_id'] = self.args['build_id']
 
         if not reqs:
             exit(0)
@@ -237,7 +237,7 @@ class DataManager(object):
     def compare_request_and_threhold(self, request, threshold):
         comparison_method = getattr(operator, COMPARISON_RULES[threshold['comparison']])
         if threshold['target'] == 'response_time':
-            metric = request[threshold['aggregation']]
+            metric = request[threshold['aggregation']] if threshold['aggregation'] != "avg" else request["mean"]
         elif threshold['target'] == 'throughput':
             metric = request['throughput']
         else:  # Will be in case error_rate is set as target

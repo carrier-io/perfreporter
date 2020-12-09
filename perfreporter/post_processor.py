@@ -79,11 +79,24 @@ class PostProcessor:
                     ado_reporter = ADOReporter(ado_config, args)
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
+        users_count, duration = 0, 0
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
-            users_count, duration = data_manager.write_comparison_data_to_influx()
-            performance_degradation_rate, compare_with_baseline = data_manager.compare_with_baseline()
-            missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
+            try:
+                users_count, duration = data_manager.write_comparison_data_to_influx()
+            except Exception as e:
+                print("Failed to aggregate results")
+                print(e)
+            try:
+                performance_degradation_rate, compare_with_baseline = data_manager.compare_with_baseline()
+            except Exception as e:
+                print("Failed to compare with baseline")
+                print(e)
+            try:
+                missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
+            except Exception as e:
+                print("Failed to compare with thresholds")
+                print(e)
             try:
                 reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                         jira_service, ado_reporter)
@@ -92,16 +105,20 @@ class PostProcessor:
             except Exception as e:
                 print(e)
             if junit_report:
-                last_build = data_manager.get_last_build()
-                violations, thresholds = data_manager.get_thresholds(last_build, True)
-                report = JUnit_reporter.create_report(thresholds, prefix)
-                files = {'file': open(report, 'rb')}
-                if project_id:
-                    upload_url = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}/file'
-                else:
-                    upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
-                requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
-                junit_report = None
+                try:
+                    last_build = data_manager.get_last_build()
+                    violations, thresholds = data_manager.get_thresholds(last_build, True)
+                    report = JUnit_reporter.create_report(thresholds, prefix)
+                    files = {'file': open(report, 'rb')}
+                    if project_id:
+                        upload_url = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}/file'
+                    else:
+                        upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
+                    requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
+                    junit_report = None
+                except Exception as e:
+                    print("Failed to create junit report")
+                    print(e)
             if galloper_url:
                 lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
@@ -177,8 +194,8 @@ class PostProcessor:
                 'influx_user': influx_user,
                 'influx_password': influx_password,
                 'comparison_metric': 'pct95',
-                'influx_db': f"{r['lg_type']}_{project_id}",
-                'comparison_db': f'comparison_{project_id}',
+                'influx_db': environ.get(f"{r['lg_type']}_db") if environ.get(f"{r['lg_type']}_db") else r["lg_type"],
+                'comparison_db': environ.get("comparison_db") if environ.get("comparison_db") else "comparison",
                 'test_limit': 5
             }
             aggregated_errors = {}
