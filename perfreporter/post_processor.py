@@ -7,8 +7,9 @@ import requests
 import re
 import shutil
 from os import remove, environ
-from json import JSONDecodeError, loads
+from json import JSONDecodeError, loads, dumps
 from datetime import datetime
+from time import time
 
 
 class PostProcessor:
@@ -19,12 +20,6 @@ class PostProcessor:
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
                         junit_report=False, results_bucket=None, prefix=None, token=None, integration=[],
                         email_recipients=None):
-        if not junit_report:
-            junit_report = environ.get("junit_report")
-        data_manager = DataManager(args, galloper_url, token, project_id)
-        if self.config_file:
-            with open("/tmp/config.yaml", "w") as f:
-                f.write(self.config_file)
         if not galloper_url:
             galloper_url = environ.get("galloper_url")
         if not project_id:
@@ -32,6 +27,21 @@ class PostProcessor:
         if not token:
             token = environ.get("token")
         headers = {'Authorization': f'bearer {token}'} if token else {}
+        status = ""
+        if galloper_url and project_id and args.get("build_id"):
+            url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
+            r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
+            status = r["status"]
+        if status == "Finished":
+            print("Post processing has already finished")
+            raise Exception("Post processing has already finished")
+        start_post_processing = time()
+        if not junit_report:
+            junit_report = environ.get("junit_report")
+        data_manager = DataManager(args, galloper_url, token, project_id)
+        if self.config_file:
+            with open("/tmp/config.yaml", "w") as f:
+                f.write(self.config_file)
         reporter = Reporter()
         rp_service, jira_service = reporter.parse_config_file(args)
         ado_reporter = None
@@ -80,10 +90,11 @@ class PostProcessor:
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
+        response_times = {}
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
             try:
-                users_count, duration = data_manager.write_comparison_data_to_influx()
+                users_count, duration, response_times = data_manager.write_comparison_data_to_influx()
             except Exception as e:
                 print("Failed to aggregate results")
                 print(e)
@@ -123,7 +134,7 @@ class PostProcessor:
                 lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
                         'missed': int(missed_threshold_rate), 'status': 'Finished', 'vusers': users_count,
-                        'duration': duration}
+                        'duration': duration, 'response_times': dumps(response_times)}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
                 else:
@@ -136,6 +147,7 @@ class PostProcessor:
         except Exception as e:
             print(e)
 
+        print("Total time -  %s seconds" % (round(time() - start_post_processing, 2)))
         if junit_report:
             parser = JTLParser()
             results = parser.parse_jtl()
@@ -260,15 +272,8 @@ class PostProcessor:
 
             # aggregate errors from each load generator
             aggregated_errors = self.aggregate_errors(errors)
-
-            status = ""
-            if galloper_url and project_id and args.get("build_id"):
-                url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
-                r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
-                status = r["status"]
-            if status != "Finished":
-                self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
-                                     token, integration, email_recipients)
+            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
+                                 token, integration, email_recipients)
 
     @staticmethod
     def aggregate_errors(test_errors):

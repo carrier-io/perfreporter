@@ -18,6 +18,7 @@ import requests
 from time import time
 from influxdb import InfluxDBClient
 import numpy as np
+from os import environ
 
 
 SELECT_LAST_BUILDS_ID = "select distinct(id) from (select build_id as id, pct95 from api_comparison where " \
@@ -26,20 +27,44 @@ SELECT_LAST_BUILDS_ID = "select distinct(id) from (select build_id as id, pct95 
 
 SELECT_LAST_BUILD_DATA = "select * from api_comparison where build_id=\'{}\'"
 
-SELECT_BASELINE_BUILD_ID = "select last(pct95), build_id from api_comparison where simulation=\'{}\' and " \
-                           "test_type=\'{}\' and \"users\"=\'{}\' and build_id=~/audit_{}_/"
-
-SELECT_BASELINE_DATA = "select * from api_comparison where build_id=\'{}\'"
-
-SELECT_THRESHOLDS = "select last(red) as red, last(yellow) as yellow from threshold where request_name=\'{}\' " \
-                    "and simulation=\'{}\'"
-
 SELECT_USERS_COUNT = "select sum(\"max\") from (select max(\"user_count\") from \"users\" where " \
                      "build_id='{}' group by lg_id)"
 
-SELECT_TEST_DATA = "select response_time, method, request_name, status_code, status from {} where build_id='{}'"
+SELECT_TEST_DATA = "select response_time from {} where build_id='{}' and request_name='{}' and method='{}'"
 
-SELECT_ALL_THRESHOLDS = "select * from thresholds where simulation='{}' {}"
+SELECT_TEST_DATA_OFFSET = "select response_time from {} where build_id='{}' and request_name='{}' and method='{}'" \
+                          " and time>'{}' limit {}"
+
+GET_REQUEST_NAMES = "show tag values on {} from {} with key=\"request_name\" where build_id='{}'"
+
+GET_REQUEST_METHODS = "show tag values on {} from {} with key=\"method\" where build_id='{}' and request_name='{}'"
+
+TOTAL_REQUEST_COUNT = "select count(\"response_time\") from {} where build_id='{}'"
+
+FIRST_REQUEST = "select first(\"response_time\") from {} where build_id='{}'"
+
+LAST_REQUEST = "select last(\"response_time\") from {} where build_id='{}'"
+
+REQUEST_COUNT = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' and method='{}'"
+
+REQUEST_MIN = "select min(\"response_time\") from {} where build_id='{}' and request_name='{}' and method='{}'"
+
+REQUEST_MAX = "select max(\"response_time\") from {} where build_id='{}' and request_name='{}' and method='{}'"
+
+REQUEST_MEAN = "select mean(\"response_time\") from {} where build_id='{}' and request_name='{}' and method='{}'"
+
+SELECT_PERCENTILE = "select percentile(\"response_time\", {}) as \"pct\" from {} where build_id='{}' and" \
+                    " request_name='{}' and method='{}'"
+
+REQUEST_STATUS = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' and method='{}'" \
+                 " and status='{}'"
+
+REQUEST_STATUS_CODE = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' " \
+                      "and method='{}' and status_code=~/{}/"
+
+REQUEST_STATUS_CODE_NAN = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' " \
+                          "and method='{}' and status_code!~/1/ and status_code!~/2/ and status_code!~/3/ " \
+                          "and status_code!~/4/ and status_code!~/5/"
 
 CALCULATE_TOTAL_THROUGHPUT = "select  sum(throughput) as \"throughput\", sum(ko) as \"ko\", " \
                              "sum(total) as \"total\" from api_comparison where build_id='{}'"
@@ -50,13 +75,7 @@ CALCULATE_ALL_AGGREGATION = "select max(response_time), min(response_time), ROUN
 
 COMPARISON_RULES = {"gte": "ge", "lte": "le", "gt": "gt", "lt": "lt", "eq": "eq"}
 
-SELECT_LAST_UI_BUILD_ID = "select distinct(id) from (select build_id as id, count from uiperf where scenario=\'{}\' " \
-                          "and suite=\'{}\' group by start_time order by time DESC limit 1) GROUP BY time(1s) " \
-                          "order by DESC limit {}"
-
-SELECT_UI_TEST_DATA = "select build_id, scenario, suite, domain, start_time, page, status, url, latency, tti, ttl," \
-                      " onload, total_time, transfer, firstPaint, encodedBodySize, decodedBodySize from uiperf " \
-                      "where build_id=\'{}\'"
+BATCH_SIZE = int(environ.get("BATCH_SIZE", 5000000))
 
 
 class DataManager(object):
@@ -70,83 +89,161 @@ class DataManager(object):
                                      username=self.args['influx_user'], password=self.args['influx_password'])
 
     def write_comparison_data_to_influx(self):
-        reqs = dict()
         timestamp = time()
         user_count = self.get_user_count()
-
+        print(f"build_id={self.args['build_id']}")
         self.client.switch_database(self.args['influx_db'])
-        data = self.client.query(SELECT_TEST_DATA.format(self.args['simulation'], self.args['build_id']))
-        data = list(data.get_points())
-        start_time = int(
-            str(datetime.datetime.strptime(data[0]['time'], "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0]) \
-                     - int(int(data[0]['response_time']) / 1000)
-        end_time = int(str(datetime.datetime.strptime(data[len(data) - 1]['time'],
+        total_requests_count = int(list(self.client.query(TOTAL_REQUEST_COUNT
+                                                          .format(self.args['simulation'],
+                                                                  self.args['build_id'])).get_points())[0]["count"])
+        print(f"Total requests count = {total_requests_count}")
+
+        # Get request names and methods
+        request_names = list(self.client.query(GET_REQUEST_NAMES.format(self.args['influx_db'], self.args['simulation'],
+                                                                        self.args['build_id'])).get_points())
+        request_names = list(each['value'] for each in request_names)
+        reqs = []
+        for request_name in request_names:
+            methods = list(self.client.query(GET_REQUEST_METHODS.format(self.args['influx_db'], self.args['simulation'],
+                                                                        self.args['build_id'],
+                                                                        request_name)).get_points())
+            for method in methods:
+                reqs.append({
+                    "request_name": request_name,
+                    "method": method["value"]
+                })
+
+        # calculate test duration and throughput
+        first_request = self.client.query(FIRST_REQUEST.format(self.args['simulation'], self.args['build_id']))
+        first_request = list(first_request.get_points())
+        last_request = self.client.query(LAST_REQUEST.format(self.args['simulation'], self.args['build_id']))
+        last_request = list(last_request.get_points())
+        start_time = int(str(datetime.datetime.strptime(first_request[0]['time'],
+                                                        "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0]) \
+                     - int(int(first_request[0]['first']) / 1000)
+        end_time = int(str(datetime.datetime.strptime(last_request[0]['time'],
                                                       "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0])
         duration = end_time - start_time
-        for req in data:
-            key = '{} {}'.format(req["method"].upper(), req["request_name"])
-            if key not in reqs:
-                reqs[key] = {
-                    "times": [],
-                    "KO": 0,
-                    "OK": 0,
-                    "1xx": 0,
-                    "2xx": 0,
-                    "3xx": 0,
-                    "4xx": 0,
-                    "5xx": 0,
-                    'NaN': 0,
-                    "method": req["method"].upper(),
-                    "request_name": req['request_name']
-                }
-            reqs[key]['times'].append(int(req['response_time']))
-            if "{}xx".format(str(req['status_code'])[0]) in reqs[key]:
-                reqs[key]["{}xx".format(str(req['status_code'])[0])] += 1
-            else:
-                reqs[key]["NaN"] += 1
-            reqs[key][req['status']] += 1
-            reqs[key]['simulation'] = self.args['simulation']
-            reqs[key]['test_type'] = self.args['type']
-            reqs[key]['env'] = self.args['env']
-            reqs[key]['build_id'] = self.args['build_id']
+        _throughput = total_requests_count / duration
+        print(f"duration = {duration}")
+        print(f"throughput = {_throughput}")
 
+        data = np.array([])
+        for req in reqs:
+            req['simulation'] = self.args['simulation']
+            req['test_type'] = self.args['type']
+            req['env'] = self.args['env']
+            req['build_id'] = self.args['build_id']
+            req["total"] = int(list(self.client.query(REQUEST_COUNT.format(self.args['simulation'],
+                                                                           self.args['build_id'], req['request_name'],
+                                                                           req['method'])).get_points())[0]["count"])
+            req["throughput"] = round(float(req["total"]) / float(duration), 3)
+            req["times"] = np.array([])
+
+            # calculate response time metrics per request
+            response_time_q = SELECT_TEST_DATA.format(self.args['simulation'], self.args['build_id'],
+                                                      req["request_name"], req["method"])
+            if req["total"] <= BATCH_SIZE:
+                _data = list(self.client.query(response_time_q).get_points())
+                req["times"] = np.append(req["times"], list(int(each["response_time"]) for each in _data))
+            else:
+                shards = req["total"] // BATCH_SIZE
+                last_read_time = '1970-01-01T19:25:26.005Z'
+                for i in range(shards):
+                    response_time_q = SELECT_TEST_DATA_OFFSET.format(self.args['simulation'], self.args['build_id'],
+                                                                     req['request_name'], req['method'],
+                                                                     last_read_time, BATCH_SIZE)
+                    _data = list(self.client.query(response_time_q).get_points())
+                    last_read_time = _data[-1]['time']
+                    req["times"] = np.append(req["times"], list(int(each["response_time"]) for each in _data))
+
+                if req["total"] % BATCH_SIZE != 0:
+                    response_time_q = SELECT_TEST_DATA_OFFSET.format(self.args['simulation'], self.args['build_id'],
+                                                                     req['request_name'], req['method'],
+                                                                     last_read_time, BATCH_SIZE)
+                    _data = list(self.client.query(response_time_q).get_points())
+                    req["times"] = np.append(req["times"], list(int(each["response_time"]) for each in _data))
+            data = np.append(data, req["times"])
+
+            req["min"] = req.get("times").min()
+            req["max"] = req.get("times").max()
+            req["mean"] = req.get("times").mean()
+
+            for pct in ["50", "75", "90", "95", "99"]:
+                req[f"pct{pct}"] = int(np.percentile(req.get("times"), int(pct), interpolation="linear"))
+
+            del req["times"]
+
+            # calculate status and status codes per request
+            ok_count = list(self.client.query(REQUEST_STATUS.format(self.args['simulation'],
+                                                                    self.args['build_id'], req['request_name'],
+                                                                    req['method'], "OK")).get_points())
+            req["OK"] = ok_count[0]["count"] if len(ok_count) > 0 else 0
+            ko_count = list(self.client.query(REQUEST_STATUS.format(self.args['simulation'],
+                                                                    self.args['build_id'], req['request_name'],
+                                                                    req['method'], "KO")).get_points())
+            req["KO"] = ko_count[0]["count"] if len(ko_count) > 0 else 0
+            for code in ["1", "2", "3", "4", "5"]:
+                _tmp = list(self.client.query(REQUEST_STATUS_CODE.format(self.args['simulation'],
+                                                                         self.args['build_id'], req['request_name'],
+                                                                         req['method'], code)).get_points())
+                req[f"{code}xx"] = _tmp[0]["count"] if len(_tmp) > 0 else 0
+
+            _NaN = list(self.client.query(REQUEST_STATUS_CODE_NAN.format(self.args['simulation'],
+                                                                         self.args['build_id'], req['request_name'],
+                                                                         req['method'])).get_points())
+            req["NaN"] = _NaN[0]["count"] if len(_NaN) > 0 else 0
+
+        # calculate overall response time metrics
+        response_times = {
+            "min": round(float(data.min()), 2),
+            "max": round(float(data.max()), 2),
+            "mean": round(float(data.mean()), 2),
+            "pct50": int(np.percentile(data, 50, interpolation="linear")),
+            "pct75": int(np.percentile(data, 75, interpolation="linear")),
+            "pct90": int(np.percentile(data, 90, interpolation="linear")),
+            "pct95": int(np.percentile(data, 95, interpolation="linear")),
+            "pct99": int(np.percentile(data, 99, interpolation="linear"))
+        }
+
+        # Write data to comparison db
         if not reqs:
-            exit(0)
+            print("No requests in the test")
+            raise Exception("No requests in the test")
         points = []
         for req in reqs:
-            np_arr = np.array(reqs[req]["times"])
             influx_record = {
                 "measurement": "api_comparison",
                 "tags": {
-                    "simulation": reqs[req]['simulation'],
-                    "env": reqs[req]['env'],
+                    "simulation": req['simulation'],
+                    "env": req['env'],
                     "users": user_count,
-                    "test_type": reqs[req]['test_type'],
-                    "build_id": reqs[req]['build_id'],
-                    "request_name": reqs[req]['request_name'],
-                    "method": reqs[req]['method'],
+                    "test_type": req['test_type'],
+                    "build_id": req['build_id'],
+                    "request_name": req['request_name'],
+                    "method": req['method'],
                     "duration": duration
                 },
                 "time": datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 "fields": {
-                    "throughput": round(float(len(reqs[req]["times"])) / float(duration), 3),
-                    "total": len(reqs[req]["times"]),
-                    "ok": reqs[req]["OK"],
-                    "ko": reqs[req]["KO"],
-                    "1xx": reqs[req]["1xx"],
-                    "2xx": reqs[req]["2xx"],
-                    "3xx": reqs[req]["3xx"],
-                    "4xx": reqs[req]["4xx"],
-                    "5xx": reqs[req]["5xx"],
-                    "NaN": reqs[req]["NaN"],
-                    "min": round(np_arr.min(), 2),
-                    "max": round(np_arr.max(), 2),
-                    "mean": round(np_arr.mean(), 2),
-                    "pct50": int(np.percentile(np_arr, 50, interpolation="linear")),
-                    "pct75": int(np.percentile(np_arr, 75, interpolation="linear")),
-                    "pct90": int(np.percentile(np_arr, 90, interpolation="linear")),
-                    "pct95": int(np.percentile(np_arr, 95, interpolation="linear")),
-                    "pct99": int(np.percentile(np_arr, 99, interpolation="linear"))
+                    "throughput": round(float(req["total"]) / float(duration), 3),
+                    "total": req["total"],
+                    "ok": req["OK"],
+                    "ko": req["KO"],
+                    "1xx": req["1xx"],
+                    "2xx": req["2xx"],
+                    "3xx": req["3xx"],
+                    "4xx": req["4xx"],
+                    "5xx": req["5xx"],
+                    "NaN": req["NaN"],
+                    "min": float(req["min"]),
+                    "max": float(req["max"]),
+                    "mean": round(float(req["mean"]), 2),
+                    "pct50": req["pct50"],
+                    "pct75": req["pct75"],
+                    "pct90": req["pct90"],
+                    "pct95": req["pct95"],
+                    "pct99": req["pct99"],
                 }
             }
             points.append(influx_record)
@@ -157,7 +254,7 @@ class DataManager(object):
         except Exception as e:
             print(e)
             print("Failed connection to " + self.args["influx_host"] + ", database - comparison")
-        return user_count, duration
+        return user_count, duration, response_times
 
     def get_api_test_info(self):
         tests_data = self.get_last_builds()
