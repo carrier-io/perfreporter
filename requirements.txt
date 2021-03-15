@@ -5,3 +5,4 @@ PyYAML==3.13
 influxdb==5.2.0
 numpy==1.16.0
 junit-xml==1.8
+pandas==1.1.5

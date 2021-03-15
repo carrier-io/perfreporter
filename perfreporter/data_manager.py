@@ -73,6 +73,10 @@ CALCULATE_ALL_AGGREGATION = "select max(response_time), min(response_time), ROUN
                             "as avg, PERCENTILE(response_time, 95) as pct95, PERCENTILE(response_time, 50) " \
                             "as pct50 from {} where build_id='{}'"
 
+DELETE_TEST_DATA = "delete from {} where build_id='{}'"
+
+DELETE_USERS_DATA = "delete from \"users\" where build_id='{}'"
+
 COMPARISON_RULES = {"gte": "ge", "lte": "le", "gt": "gt", "lt": "lt", "eq": "eq"}
 
 BATCH_SIZE = int(environ.get("BATCH_SIZE", 5000000))
@@ -87,6 +91,11 @@ class DataManager(object):
         self.last_build_data = None
         self.client = InfluxDBClient(self.args["influx_host"], self.args['influx_port'],
                                      username=self.args['influx_user'], password=self.args['influx_password'])
+
+    def delete_test_data(self):
+        self.client.switch_database(self.args['influx_db'])
+        self.client.query(DELETE_TEST_DATA.format(self.args["simulation"], self.args["build_id"]))
+        self.client.query(DELETE_USERS_DATA.format(self.args["build_id"]))
 
     def write_comparison_data_to_influx(self):
         timestamp = time()
@@ -250,7 +259,6 @@ class DataManager(object):
         try:
             self.client.switch_database(self.args['comparison_db'])
             self.client.write_points(points)
-            self.client.close()
         except Exception as e:
             print(e)
             print("Failed connection to " + self.args["influx_host"] + ", database - comparison")

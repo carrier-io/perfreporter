@@ -141,6 +141,8 @@ class PostProcessor:
                     url = f'{galloper_url}/api/report'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 print(r.text)
+                if r.json()["message"] == "updated":
+                    data_manager.delete_test_data()
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                    compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter)
