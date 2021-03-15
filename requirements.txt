@@ -1,7 +1,7 @@
 reportportal-client==5.0.5
 jira==2.0.0
 requests==2.23.0
-PyYAML==3.13
+PyYAML==5.1
 influxdb==5.2.0
 numpy==1.16.0
 junit-xml==1.8
