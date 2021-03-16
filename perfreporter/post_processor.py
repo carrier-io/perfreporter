@@ -181,7 +181,7 @@ class PostProcessor:
                         "notification_type": "api",
                         "test_type": args["type"],
                         "env": args["env"],
-                        "users": data_manager.get_user_count()
+                        "users": users_count
                     }
                     res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
                                                                         'Content-type': 'application/json'})

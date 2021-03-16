@@ -256,6 +256,27 @@ class DataManager(object):
                 }
             }
             points.append(influx_record)
+
+        # Summary
+        points.append({"measurement": "api_comparison", "tags": {"simulation": self.args['simulation'],
+                                                                 "env": self.args['env'], "users": user_count,
+                                                                 "test_type": self.args['type'], "duration": duration,
+                                                                 "build_id": self.args['build_id'],
+                                                                 "request_name": "All", "method": "All"},
+                       "time": datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                       "fields": {"throughput": _throughput, "total": total_requests_count,
+                                  "ok": sum(point['fields']['ok'] for point in points),
+                                  "ko": sum(point['fields']['ko'] for point in points),
+                                  "1xx": sum(point['fields']['1xx'] for point in points),
+                                  "2xx": sum(point['fields']['2xx'] for point in points),
+                                  "3xx": sum(point['fields']['3xx'] for point in points),
+                                  "4xx": sum(point['fields']['4xx'] for point in points),
+                                  "5xx": sum(point['fields']['5xx'] for point in points),
+                                  "NaN": sum(point['fields']['NaN'] for point in points),
+                                  "min": response_times["min"], "max": response_times["max"],
+                                  "mean": response_times["mean"], "pct50": response_times["pct50"],
+                                  "pct75": response_times["pct75"], "pct90": response_times["pct90"],
+                                  "pct95": response_times["pct95"], "pct99": response_times["pct99"]}})
         try:
             self.client.switch_database(self.args['comparison_db'])
             self.client.write_points(points)
