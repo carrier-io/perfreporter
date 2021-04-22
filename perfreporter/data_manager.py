@@ -60,7 +60,7 @@ REQUEST_STATUS = "select count(\"response_time\") from {} where build_id='{}' an
                  " and status='{}'"
 
 REQUEST_STATUS_CODE = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' " \
-                      "and method='{}' and status_code=~/{}/"
+                      "and method='{}' and status_code=~/^{}/"
 
 REQUEST_STATUS_CODE_NAN = "select count(\"response_time\") from {} where build_id='{}' and request_name='{}' " \
                           "and method='{}' and status_code!~/1/ and status_code!~/2/ and status_code!~/3/ " \
