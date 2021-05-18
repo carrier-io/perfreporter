@@ -11,8 +11,7 @@ FIELDNAMES = 'timeStamp', 'response_time', 'request_name', "status_code", "respo
 
 class JTLParser(object):
 
-    def parse_jtl(self):
-        log_file = "/tmp/reports/jmeter.jtl"
+    def parse_jtl(self, log_file="/tmp/reports/jmeter.jtl"):
         unparsed_counter = 0
         requests = {}
         if not path.exists(log_file):
@@ -26,7 +25,7 @@ class JTLParser(object):
                 try:
                     if entry['request_name'] != 'label':
                         if re.search(r'-\d+$', entry['request_name']):
-                                continue
+                            continue
                         if start_timestamp > int(entry['timeStamp']):
                             start_timestamp = int(entry['timeStamp']) - int(entry['response_time'])
                         if end_timestamp < int(entry['timeStamp']):
