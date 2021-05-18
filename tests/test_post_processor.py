@@ -18,8 +18,9 @@ results = {'requests':
 def test_aggregate_errors():
     errors = []
     with open("tests/utils/aggregated_errors.json", "r") as f:
-        errors.append(loads(f.read()))
-        errors.append(loads(f.read()))
+        error = loads(f.read())
+        errors.append(error)
+        errors.append(error)
 
     aggregated_errors = post_processor.aggregate_errors(errors)
     assert aggregated_errors["Step5_GET_200"]["Error count"] == 4
