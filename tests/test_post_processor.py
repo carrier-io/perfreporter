@@ -1,6 +1,9 @@
 import pytest
+import os
+import shutil
 from json import loads
 from perfreporter.post_processor import PostProcessor
+from perfreporter.junit_reporter import JUnit_reporter
 
 post_processor = PostProcessor(config_file={})
 results = {'requests':
@@ -26,7 +29,7 @@ def test_aggregate_errors():
     assert aggregated_errors["Step5_GET_200"]["Error count"] == 4
 
 
-def test_calculate_thresholds():
+def test_calculate_thresholds_and_create_junit_report():
     thresholds = post_processor.calculate_thresholds(results)
     assert len(thresholds) == 9
     for i in range(3):
@@ -34,5 +37,7 @@ def test_calculate_thresholds():
     for i in range(3, 9):
         assert thresholds[i]["status"] == "PASSED"
 
-
-
+    os.mkdir("/tmp/reports")
+    JUnit_reporter.process_report(results['requests'], thresholds)
+    assert os.path.exists('/tmp/reports/jmeter.xml')
+    shutil.rmtree('/tmp/reports')

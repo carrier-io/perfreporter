@@ -5,16 +5,14 @@ from perfreporter.report_portal import ReportPortal
 from perfreporter.jira_wrapper import JiraWrapper
 
 
-PATH_TO_CONFIG = "/tmp/config.yaml"
-
-
 class Reporter(object):
+    def __init__(self, config_file="/tmp/config.yaml"):
+        self.config_file = config_file
 
-    @staticmethod
-    def parse_config_file(args):
+    def parse_config_file(self, args):
         report_types = []
         try:
-            with open(PATH_TO_CONFIG, "rb") as f:
+            with open(self.config_file, "rb") as f:
                 config = yaml.load(f.read())
             if config:
                 report_types = list(config.keys())
