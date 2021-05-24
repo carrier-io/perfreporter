@@ -2,7 +2,7 @@
 reportportal:                                        # ReportPortal.io specific section
   rp_host: https://rp.com                            # url to ReportPortal.io deployment
   rp_token: XXXXXXXXXXXXX                            # ReportPortal authentication token
-  rp_project_name: XXXXXX                            # Name of a Project in ReportPortal to send results to
+  rp_project_name: my_project                            # Name of a Project in ReportPortal to send results to
   rp_launch_name: XXXXXX                             # Name of a launch in ReportPortal to send results to
   check_functional_errors: False                     # Perform analysis by functional error. False or True (Default: False)
   check_performance_degradation: False               # Perform analysis compared to baseline False or True (Default: False)

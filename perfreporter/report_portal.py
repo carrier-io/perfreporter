@@ -83,7 +83,7 @@ class ReportPortal:
         return s
 
     def log_message(self, item_id, service, message, errors, level='WARN'):
-        if errors[message] is not 'undefined':
+        if errors[message] != 'undefined':
             if isinstance(errors[message], list):
                 if len(errors[message]) > 1:
                     log = ''
@@ -103,16 +103,16 @@ class ReportPortal:
 
     def log_unique_error_id(self, item_id, service, request_name, method, response_code):
         error_id = ""
-        if method is not 'undefined':
+        if method != 'undefined':
             error_id += method + '_' + request_name
         else:
             error_id += request_name
-        if response_code is not 'undefined':
+        if response_code != 'undefined':
             error_id += '_' + response_code
         service.log(item_id=item_id, time=self.timestamp(), message=error_id, level='ERROR')
 
     def get_item_name(self, entry):
-        if entry['Method'] is not 'undefined' and entry['Response code'] is not 'undefined':
+        if entry['Method'] != 'undefined' and entry['Response code'] != 'undefined':
             return "{} {} {}".format(str(entry['Request name']),
                                      str(entry['Method']),
                                      str(entry['Response code']))

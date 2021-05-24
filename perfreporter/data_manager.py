@@ -321,9 +321,11 @@ class DataManager(object):
             print(e)
         return 0
 
-    def compare_with_baseline(self):
-        baseline = self.get_baseline()
-        last_build = self.get_last_build()
+    def compare_with_baseline(self, baseline=None, last_build=None):
+        if not baseline:
+            baseline = self.get_baseline()
+        if not last_build:
+            last_build = self.get_last_build()
         comparison_metric = self.args['comparison_metric']
         compare_with_baseline = []
         if not baseline:
@@ -338,7 +340,6 @@ class DataManager(object):
                                                       "baseline": baseline_request[comparison_metric]
                                                       })
         performance_degradation_rate = round(float(len(compare_with_baseline) / len(last_build)) * 100, 2)
-
         return performance_degradation_rate, compare_with_baseline
 
     def compare_with_thresholds(self):
