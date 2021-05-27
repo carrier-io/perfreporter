@@ -141,7 +141,7 @@ class PostProcessor:
                     url = f'{galloper_url}/api/report'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 print(r.text)
-                if r.json()["message"] == "updated":
+                if r.json()["message"] == "updated" and self.str2bool(environ.get("remove_row_data")):
                     data_manager.delete_test_data()
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
@@ -323,3 +323,16 @@ class PostProcessor:
                                    "threshold": rt_threshold, "status": "PASSED", "metric": "ms"})
 
         return thresholds
+
+    @staticmethod
+    def str2bool(v):
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise Exception('Boolean value expected.')
