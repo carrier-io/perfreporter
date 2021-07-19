@@ -133,7 +133,7 @@ class DataManager(object):
         end_time = int(str(datetime.datetime.strptime(last_request[0]['time'],
                                                       "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0])
         duration = end_time - start_time
-        _throughput = total_requests_count / duration
+        _throughput = round(float(total_requests_count / duration), 3)
         print(f"duration = {duration}")
         print(f"throughput = {_throughput}")
 
