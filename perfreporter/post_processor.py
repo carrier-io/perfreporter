@@ -28,13 +28,16 @@ class PostProcessor:
             token = environ.get("token")
         headers = {'Authorization': f'bearer {token}'} if token else {}
         status = ""
-        if galloper_url and project_id and args.get("build_id"):
-            url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
-            r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
-            status = r["status"]
-        if status == "Finished":
-            print("Post processing has already finished")
-            raise Exception("Post processing has already finished")
+        try:
+            if galloper_url and project_id and args.get("build_id"):
+                url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
+                r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
+                status = r["status"]
+            if status == "Finished":
+                print("Post processing has already finished")
+                raise Exception("Post processing has already finished")
+        except:
+            print("Failed to check test status")
         start_post_processing = time()
         if not junit_report:
             junit_report = environ.get("junit_report")
@@ -122,7 +125,7 @@ class PostProcessor:
                     report = JUnit_reporter.create_report(thresholds, prefix)
                     files = {'file': open(report, 'rb')}
                     if project_id:
-                        upload_url = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}/file'
+                        upload_url = f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}'
                     else:
                         upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
                     requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
@@ -238,10 +241,10 @@ class PostProcessor:
             args = {}
             # get list of files
             if project_id:
-                r = requests.get(f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}',
+                r = requests.get(f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}',
                                  headers={**headers, 'Content-type': 'application/json'})
                 files = []
-                for each in r.json():
+                for each in r.json()["rows"]:
                     if each["name"].startswith(prefix):
                         files.append(each["name"])
             else:
@@ -251,7 +254,7 @@ class PostProcessor:
 
             # download and unpack each file
             if project_id:
-                bucket_path = f'{galloper_url}/api/v1/artifacts/{project_id}/{results_bucket}'
+                bucket_path = f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}'
             else:
                 bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
             for file in files:
