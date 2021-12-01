@@ -32,7 +32,7 @@ class PostProcessor:
             if galloper_url and project_id and args.get("build_id"):
                 url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
                 r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
-                status = r["status"]
+                status = r["test_status"]["status"]
             if status == "Finished":
                 print("Post processing has already finished")
                 raise Exception("Post processing has already finished")
@@ -53,7 +53,9 @@ class PostProcessor:
                 secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
                 try:
                     jira_core_config = loads(requests.get(secrets_url + "jira",
-                                             headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                                                          headers={**headers,
+                                                                   'Content-type': 'application/json'}).json()[
+                                                 "secret"])
                 except (AttributeError, JSONDecodeError):
                     jira_core_config = {}
                 try:
@@ -69,7 +71,8 @@ class PostProcessor:
                 secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
                 try:
                     rp_core_config = loads(requests.get(secrets_url + "rp",
-                                           headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                                                        headers={**headers, 'Content-type': 'application/json'}).json()[
+                                               "secret"])
                 except (AttributeError, JSONDecodeError):
                     rp_core_config = {}
                 try:
@@ -85,7 +88,8 @@ class PostProcessor:
                 secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
                 try:
                     ado_config = loads(requests.get(secrets_url + "ado",
-                                       headers={**headers, 'Content-type': 'application/json'}).json()["secret"])
+                                                    headers={**headers, 'Content-type': 'application/json'}).json()[
+                                           "secret"])
                 except (AttributeError, JSONDecodeError):
                     ado_config = {}
                 if ado_config:
@@ -135,8 +139,11 @@ class PostProcessor:
                     print(e)
             if galloper_url:
                 lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
+                # TODO set status to failed or passed based on thresholds
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
-                        'missed': int(missed_threshold_rate), 'status': 'Finished', 'vusers': users_count,
+                        'missed': int(missed_threshold_rate),
+                        'test_status': {"status": "Finished", "percentage": 100, "description": "Test is finished"},
+                        'vusers': users_count,
                         'duration': duration, 'response_times': dumps(response_times)}
                 if project_id:
                     url = f'{galloper_url}/api/v1/reports/{project_id}'
@@ -164,9 +171,9 @@ class PostProcessor:
                 secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
                 try:
                     email_notification_id = requests.get(secrets_url + "email_notification_id",
-                                                               headers={'Authorization': f'bearer {token}',
-                                                                        'Content-type': 'application/json'}
-                                                               ).json()["secret"]
+                                                         headers={'Authorization': f'bearer {token}',
+                                                                  'Content-type': 'application/json'}
+                                                         ).json()["secret"]
                 except (AttributeError, JSONDecodeError):
                     email_notification_id = ""
                 if email_notification_id:
@@ -187,7 +194,7 @@ class PostProcessor:
                         "users": users_count
                     }
                     res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
-                                                                        'Content-type': 'application/json'})
+                                                                       'Content-type': 'application/json'})
                     print("Email notification")
                     print(res.text)
 
@@ -233,7 +240,8 @@ class PostProcessor:
                     'Response': [each['Response body']],
                     'Error_message': [each['Error message']],
                 }
-            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix, token,
+            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
+                                 token,
                                  integration, email_recipients)
 
         else:
