@@ -139,7 +139,11 @@ class PostProcessor:
                     print("Failed to create junit report")
                     print(e)
             if galloper_url:
-                thresholds_quality_gate = 20
+                thresholds_quality_gate = environ.get("thresholds_quality_gate", 20)
+                try:
+                    thresholds_quality_gate = int(thresholds_quality_gate)
+                except:
+                    thresholds_quality_gate = 20
                 if total_checked_thresholds:
                     if missed_threshold_rate > thresholds_quality_gate:
                         test_status = {"status": "Failed", "percentage": 100,
