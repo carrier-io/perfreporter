@@ -29,7 +29,8 @@ def test_get_thresholds_and_create_junit_report():
                  f"environment={c.ARGS['env']}&order=asc", json=c.THRESHOLDS, status_code=200)
         mock.get(c.ALL_METRICS_REQUEST, json=c.ALL_METRICS_RESPONSE)
         mock.get(c.TP_REQUEST, json=c.TP_RESPONSE)
-        missed_threshold_rate, compare_with_thresholds = data_manager.get_thresholds(test=c.TEST_DATA, add_green=True)
+        total_checked, missed_threshold_rate, compare_with_thresholds = data_manager.get_thresholds(test=c.TEST_DATA,
+                                                                                                    add_green=True)
         failed_requests = []
         print(missed_threshold_rate)
         print(compare_with_thresholds)

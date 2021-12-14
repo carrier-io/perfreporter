@@ -292,7 +292,7 @@ class DataManager(object):
         last_test_data = tests_data[0]
         self.args['build_id'] = tests_data[0][0]['build_id']
         baseline = self.get_baseline()
-        violations, thresholds = self.get_thresholds(last_test_data, add_green=True)
+        total_checked, violations, thresholds = self.get_thresholds(last_test_data, add_green=True)
         return tests_data, last_test_data, baseline, violations, thresholds
 
     def get_last_builds(self):
@@ -369,10 +369,8 @@ class DataManager(object):
             metric = request['throughput']
         else:  # Will be in case error_rate is set as target
             metric = round(float(request['ko'] / request['total']) * 100, 2)
-        if comparison_method(metric, threshold['red']):
+        if comparison_method(metric, threshold['value']):
             return "red", metric
-        if comparison_method(metric, threshold['yellow']):
-            return "yellow", metric
         return "green", metric
 
     def aggregate_test(self):
@@ -394,7 +392,7 @@ class DataManager(object):
         total_violated = 0
         headers = {'Authorization': f'bearer {self.token}'} if self.token else {}
         thresholds_url = f"{self.galloper_url}/api/v1/thresholds/{self.project_id}/backend?" \
-                         f"name={self.args['simulation']}&environment={self.args['env']}&order=asc"
+                         f"test={self.args['simulation']}&env={self.args['env']}&order=asc"
         _thresholds = requests.get(thresholds_url, headers={**headers, 'Content-type': 'application/json'}).json()
 
         def compile_violation(request, th, total_checked, total_violated, compare_with_thresholds, add_green=False):
@@ -407,8 +405,7 @@ class DataManager(object):
                     "aggregation": th["aggregation"],
                     "metric": metric,
                     "threshold": color,
-                    "yellow": th['yellow'],
-                    "red": th["red"]
+                    "value": th["value"]
                 })
             if color is not "green":
                 total_violated += 1
@@ -442,4 +439,4 @@ class DataManager(object):
         violated = 0
         if total_checked:
             violated = round(float(total_violated / total_checked) * 100, 2)
-        return violated, compare_with_thresholds
+        return total_checked, violated, compare_with_thresholds

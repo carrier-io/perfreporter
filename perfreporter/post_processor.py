@@ -97,6 +97,7 @@ class PostProcessor:
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
+        total_checked_thresholds = 0
         response_times = {}
         compare_with_baseline, compare_with_thresholds = [], []
         if args['influx_host']:
@@ -111,7 +112,7 @@ class PostProcessor:
                 print("Failed to compare with baseline")
                 print(e)
             try:
-                missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
+                total_checked_thresholds, missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
             except Exception as e:
                 print("Failed to compare with thresholds")
                 print(e)
@@ -125,7 +126,7 @@ class PostProcessor:
             if junit_report:
                 try:
                     last_build = data_manager.get_last_build()
-                    violations, thresholds = data_manager.get_thresholds(last_build, True)
+                    total_checked, violations, thresholds = data_manager.get_thresholds(last_build, True)
                     report = JUnit_reporter.create_report(thresholds, prefix)
                     files = {'file': open(report, 'rb')}
                     if project_id:
@@ -138,11 +139,21 @@ class PostProcessor:
                     print("Failed to create junit report")
                     print(e)
             if galloper_url:
+                thresholds_quality_gate = 20
+                if total_checked_thresholds:
+                    if missed_threshold_rate > thresholds_quality_gate:
+                        test_status = {"status": "Failed", "percentage": 100,
+                                       "description": f"Missed more then {thresholds_quality_gate}% thresholds"}
+                    else:
+                        test_status = {"status": "Success", "percentage": 100,
+                                       "description": f"Successfully met more than {100 - thresholds_quality_gate}% of thresholds"}
+                else:
+                    test_status = {"status": "Finished", "percentage": 100, "description": "Test is finished"}
                 lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
                 # TODO set status to failed or passed based on thresholds
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
                         'missed': int(missed_threshold_rate),
-                        'test_status': {"status": "Finished", "percentage": 100, "description": "Test is finished"},
+                        'test_status': test_status,
                         'vusers': users_count,
                         'duration': duration, 'response_times': dumps(response_times)}
                 if project_id:
