@@ -28,16 +28,17 @@ class PostProcessor:
             token = environ.get("token")
         headers = {'Authorization': f'bearer {token}'} if token else {}
         status = ""
-        try:
-            if galloper_url and project_id and args.get("build_id"):
-                url = f'{galloper_url}/api/v1/reports/{project_id}/processing?build_id={args.get("build_id")}'
-                r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
-                status = r["test_status"]["status"]
-            if status == "Finished":
-                print("Post processing has already finished")
-                raise Exception("Post processing has already finished")
-        except:
-            print("Failed to check test status")
+        # TODO add post processing API
+        # try:
+        #     if galloper_url and project_id and args.get("build_id"):
+        #         url = f'{galloper_url}/api/v1/backend_performance/{project_id}/processing?build_id={args.get("build_id")}'
+        #         r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
+        #         status = r["test_status"]["status"]
+        #     if status == "Finished":
+        #         print("Post processing has already finished")
+        #         raise Exception("Post processing has already finished")
+        # except:
+        #     print("Failed to check test status")
         start_post_processing = time()
         if not junit_report:
             junit_report = environ.get("junit_report")
@@ -50,7 +51,7 @@ class PostProcessor:
         ado_reporter = None
         if not jira_service and "jira" in integration:
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
                 try:
                     jira_core_config = loads(requests.get(secrets_url + "jira",
                                                           headers={**headers,
@@ -68,7 +69,7 @@ class PostProcessor:
 
         if not rp_service and "report_portal" in integration:
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
                 try:
                     rp_core_config = loads(requests.get(secrets_url + "rp",
                                                         headers={**headers, 'Content-type': 'application/json'}).json()[
@@ -85,7 +86,7 @@ class PostProcessor:
 
         if "azure_devops" in integration:
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
                 try:
                     ado_config = loads(requests.get(secrets_url + "ado",
                                                     headers={**headers, 'Content-type': 'application/json'}).json()[
@@ -129,10 +130,7 @@ class PostProcessor:
                     total_checked, violations, thresholds = data_manager.get_thresholds(last_build, True)
                     report = JUnit_reporter.create_report(thresholds, prefix)
                     files = {'file': open(report, 'rb')}
-                    if project_id:
-                        upload_url = f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}'
-                    else:
-                        upload_url = f'{galloper_url}/artifacts/{results_bucket}/upload'
+                    upload_url = f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}'
                     requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
                     junit_report = None
                 except Exception as e:
@@ -160,10 +158,7 @@ class PostProcessor:
                         'test_status': test_status,
                         'vusers': users_count,
                         'duration': duration, 'response_times': dumps(response_times)}
-                if project_id:
-                    url = f'{galloper_url}/api/v1/reports/{project_id}'
-                else:
-                    url = f'{galloper_url}/api/report'
+                url = f'{galloper_url}/api/v1/backend_performance/reports/{project_id}'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 print(r.text)
                 if r.json()["message"] == "updated" and self.str2bool(environ.get("remove_row_data")):
@@ -183,7 +178,7 @@ class PostProcessor:
             JUnit_reporter.process_report(aggregated_requests, thresholds)
         if "email" in integration and email_recipients:
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/{project_id}/"
+                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
                 try:
                     email_notification_id = requests.get(secrets_url + "email_notification_id",
                                                          headers={'Authorization': f'bearer {token}',
@@ -193,7 +188,7 @@ class PostProcessor:
                     email_notification_id = ""
                 if email_notification_id:
                     emails = [x.strip() for x in email_recipients.split(",")]
-                    task_url = f"{galloper_url}/api/v1/task/{project_id}/{email_notification_id}"
+                    task_url = f"{galloper_url}/api/v1/tasks/task/{project_id}/{email_notification_id}"
                     event = {
                         "influx_host": args["influx_host"],
                         "influx_port": args["influx_port"],
@@ -219,7 +214,7 @@ class PostProcessor:
 
         headers = {'Authorization': f'bearer {token}'} if token else {}
         if project_id and galloper_url and report_id and influx_host:
-            r = requests.get(f'{galloper_url}/api/v1/reports/{project_id}?report_id={report_id}',
+            r = requests.get(f'{galloper_url}/api/v1/backend_performance/reports/{project_id}?report_id={report_id}',
                              headers={**headers, 'Content-type': 'application/json'}).json()
             start_time = r["start_time"]
             end_time = str(datetime.now()).replace(" ", "T") + "Z"
@@ -238,7 +233,7 @@ class PostProcessor:
                 'test_limit': 5
             }
             aggregated_errors = {}
-            r = requests.get(f'{galloper_url}/api/v1/chart/errors/table?test_name={args["simulation"]}&'
+            r = requests.get(f'{galloper_url}/api/v1/backend_performance/charts/errors/table?test_name={args["simulation"]}&'
                              f'start_time={start_time}&end_time={end_time}&low_value=0.00&high_value=100.00&'
                              f'status=all&order=asc',
                              headers={**headers, 'Content-type': 'application/json'}).json()
@@ -263,23 +258,15 @@ class PostProcessor:
             errors = []
             args = {}
             # get list of files
-            if project_id:
-                r = requests.get(f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}',
-                                 headers={**headers, 'Content-type': 'application/json'})
-                files = []
-                for each in r.json()["rows"]:
-                    if each["name"].startswith(prefix):
-                        files.append(each["name"])
-            else:
-                r = requests.get(f'{galloper_url}/artifacts?q={results_bucket}', headers=headers)
-                pattern = '<a href="/artifacts/{}/({}.+?)"'.format(results_bucket, prefix)
-                files = re.findall(pattern, r.text)
+            r = requests.get(f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}',
+                             headers={**headers, 'Content-type': 'application/json'})
+            files = []
+            for each in r.json()["rows"]:
+                if each["name"].startswith(prefix):
+                    files.append(each["name"])
 
             # download and unpack each file
-            if project_id:
-                bucket_path = f'{galloper_url}/api/v1/artifact/{project_id}/{results_bucket}'
-            else:
-                bucket_path = f'{galloper_url}/artifacts/{results_bucket}'
+            bucket_path = f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}'
             for file in files:
                 downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
                 with open(f"/tmp/{file}", 'wb') as f:
@@ -293,10 +280,7 @@ class PostProcessor:
                         args = loads(f.read())
 
                 # delete file from minio
-                if project_id:
-                    requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
-                else:
-                    requests.get(f'{bucket_path}/{file}/delete', headers=headers)
+                requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
 
             # aggregate errors from each load generator
             aggregated_errors = self.aggregate_errors(errors)

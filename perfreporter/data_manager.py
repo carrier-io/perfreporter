@@ -348,7 +348,7 @@ class DataManager(object):
 
     def get_baseline(self):
         headers = {'Authorization': f'bearer {self.token}'} if self.token else {}
-        baseline_url = f"{self.galloper_url}/api/v1/baseline/{self.project_id}?" \
+        baseline_url = f"{self.galloper_url}/api/v1/backend_performance/baseline/{self.project_id}?" \
                        f"test_name={self.args['simulation']}&env={self.args['env']}"
         res = requests.get(baseline_url, headers={**headers, 'Content-type': 'application/json'}).json()
         return res["baseline"]
@@ -391,7 +391,7 @@ class DataManager(object):
         total_checked = 0
         total_violated = 0
         headers = {'Authorization': f'bearer {self.token}'} if self.token else {}
-        thresholds_url = f"{self.galloper_url}/api/v1/thresholds/{self.project_id}/backend?" \
+        thresholds_url = f"{self.galloper_url}/api/v1/backend_performance/thresholds/{self.project_id}?" \
                          f"test={self.args['simulation']}&env={self.args['env']}&order=asc"
         _thresholds = requests.get(thresholds_url, headers={**headers, 'Content-type': 'application/json'}).json()
 
