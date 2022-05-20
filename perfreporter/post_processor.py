@@ -266,7 +266,7 @@ class PostProcessor:
                     files.append(each["name"])
 
             # download and unpack each file
-            bucket_path = f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}'
+            bucket_path = f'{galloper_url}/api/v1/artifacts/artifact/{project_id}/{results_bucket}'
             for file in files:
                 downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
                 with open(f"/tmp/{file}", 'wb') as f:
