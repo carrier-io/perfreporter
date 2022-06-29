@@ -49,12 +49,12 @@ class ErrorLogParser(object):
                             else:
                                 aggregated_errors[key][field].append(data[field.lower()])
                 except Exception as e:
-                    globals().get("logger").error(e)
+                    print(e)
                     unparsed_counter += 1
                     pass
 
         if unparsed_counter > 0:
-            globals().get("logger").warning("Unparsed errors: %d" % unparsed_counter)
+            print("Unparsed errors: %d" % unparsed_counter)
         return aggregated_errors
 
     @staticmethod

@@ -63,7 +63,7 @@ class ReportPortal:
         :param exc_info: result of sys.exc_info() -> (type, value, traceback)
         :return:
         """
-        globals().get("logger").error("Error occurred: {}".format(exc_info[1]))
+        print("Error occurred: {}".format(exc_info[1]))
         traceback.print_exception(*exc_info)
 
     def html_decode(self, s):

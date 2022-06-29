@@ -83,12 +83,13 @@ BATCH_SIZE = int(environ.get("BATCH_SIZE", 5000000))
 
 
 class DataManager(object):
-    def __init__(self, arguments, galloper_url, token, project_id):
+    def __init__(self, arguments, galloper_url, token, project_id, logger):
         self.args = arguments
         self.galloper_url = galloper_url
         self.token = token
         self.project_id = project_id
         self.last_build_data = None
+        self.logger = logger
         self.client = InfluxDBClient(self.args["influx_host"], self.args['influx_port'],
                                      username=self.args['influx_user'], password=self.args['influx_password'])
 
@@ -100,12 +101,12 @@ class DataManager(object):
     def write_comparison_data_to_influx(self):
         timestamp = time()
         user_count = self.get_user_count()
-        globals().get("logger").info(f"build_id={self.args['build_id']}")
+        self.logger.info(f"build_id={self.args['build_id']}")
         self.client.switch_database(self.args['influx_db'])
         total_requests_count = int(list(self.client.query(TOTAL_REQUEST_COUNT
                                                           .format(self.args['simulation'],
                                                                   self.args['build_id'])).get_points())[0]["count"])
-        globals().get("logger").info(f"Total requests count = {total_requests_count}")
+        self.logger.info(f"Total requests count = {total_requests_count}")
 
         # Get request names and methods
         request_names = list(self.client.query(GET_REQUEST_NAMES.format(self.args['influx_db'], self.args['simulation'],
@@ -134,8 +135,8 @@ class DataManager(object):
                                                       "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0])
         duration = end_time - start_time
         _throughput = round(float(total_requests_count / duration), 3)
-        globals().get("logger").info(f"duration = {duration}")
-        globals().get("logger").info(f"throughput = {_throughput}")
+        self.logger.info(f"duration = {duration}")
+        self.logger.info(f"throughput = {_throughput}")
 
         data = np.array([])
         for req in reqs:
@@ -217,7 +218,7 @@ class DataManager(object):
 
         # Write data to comparison db
         if not reqs:
-            globals().get("logger").error("No requests in the test")
+            self.logger.error("No requests in the test")
             raise Exception("No requests in the test")
         points = []
         for req in reqs:
@@ -281,8 +282,8 @@ class DataManager(object):
             self.client.switch_database(self.args['comparison_db'])
             self.client.write_points(points)
         except Exception as e:
-            globals().get("logger").error(e)
-            globals().get("logger").error("Failed connection to " + self.args["influx_host"] + ", database - comparison")
+            self.logger.error(e)
+            self.logger.error("Failed connection to " + self.args["influx_host"] + ", database - comparison")
         return user_count, duration, response_times
 
     def get_api_test_info(self):
@@ -318,7 +319,7 @@ class DataManager(object):
             data = list(data.get_points())[0]
             return int(data['sum'])
         except Exception as e:
-            globals().get("logger").error(e)
+            self.logger.error(e)
         return 0
 
     def compare_with_baseline(self, baseline=None, last_build=None):
@@ -329,7 +330,7 @@ class DataManager(object):
         comparison_metric = self.args['comparison_metric']
         compare_with_baseline = []
         if not baseline:
-            globals().get("logger").warning("Baseline not found")
+            self.logger.warning("Baseline not found")
             return 0, []
         for request in last_build:
             for baseline_request in baseline:
