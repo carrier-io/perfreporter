@@ -100,12 +100,12 @@ class DataManager(object):
     def write_comparison_data_to_influx(self):
         timestamp = time()
         user_count = self.get_user_count()
-        print(f"build_id={self.args['build_id']}")
+        globals().get("logger").info(f"build_id={self.args['build_id']}")
         self.client.switch_database(self.args['influx_db'])
         total_requests_count = int(list(self.client.query(TOTAL_REQUEST_COUNT
                                                           .format(self.args['simulation'],
                                                                   self.args['build_id'])).get_points())[0]["count"])
-        print(f"Total requests count = {total_requests_count}")
+        globals().get("logger").info(f"Total requests count = {total_requests_count}")
 
         # Get request names and methods
         request_names = list(self.client.query(GET_REQUEST_NAMES.format(self.args['influx_db'], self.args['simulation'],
@@ -134,8 +134,8 @@ class DataManager(object):
                                                       "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()).split(".")[0])
         duration = end_time - start_time
         _throughput = round(float(total_requests_count / duration), 3)
-        print(f"duration = {duration}")
-        print(f"throughput = {_throughput}")
+        globals().get("logger").info(f"duration = {duration}")
+        globals().get("logger").info(f"throughput = {_throughput}")
 
         data = np.array([])
         for req in reqs:
@@ -217,7 +217,7 @@ class DataManager(object):
 
         # Write data to comparison db
         if not reqs:
-            print("No requests in the test")
+            globals().get("logger").error("No requests in the test")
             raise Exception("No requests in the test")
         points = []
         for req in reqs:
@@ -281,8 +281,8 @@ class DataManager(object):
             self.client.switch_database(self.args['comparison_db'])
             self.client.write_points(points)
         except Exception as e:
-            print(e)
-            print("Failed connection to " + self.args["influx_host"] + ", database - comparison")
+            globals().get("logger").error(e)
+            globals().get("logger").error("Failed connection to " + self.args["influx_host"] + ", database - comparison")
         return user_count, duration, response_times
 
     def get_api_test_info(self):
@@ -318,7 +318,7 @@ class DataManager(object):
             data = list(data.get_points())[0]
             return int(data['sum'])
         except Exception as e:
-            print(e)
+            globals().get("logger").error(e)
         return 0
 
     def compare_with_baseline(self, baseline=None, last_build=None):
@@ -329,7 +329,7 @@ class DataManager(object):
         comparison_metric = self.args['comparison_metric']
         compare_with_baseline = []
         if not baseline:
-            print("Baseline not found")
+            globals().get("logger").warning("Baseline not found")
             return 0, []
         for request in last_build:
             for baseline_request in baseline:

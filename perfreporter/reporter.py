@@ -31,7 +31,7 @@ class Reporter(object):
             performance_degradation_rate = config['reportportal'].get("performance_degradation_rate", 20)
             missed_thresholds_rate = config['reportportal'].get("missed_thresholds_rate", 50)
             if not all([rp_project, rp_url, rp_token, rp_launch_name]):
-                print("ReportPortal configuration values missing, proceeding "
+                globals().get("logger").warning("ReportPortal configuration values missing, proceeding "
                       "without report portal integration ")
             else:
                 rp_service = ReportPortal(args, rp_url, rp_token, rp_project, rp_launch_name, check_functional_errors,
@@ -56,7 +56,7 @@ class Reporter(object):
             performance_degradation_rate = config['jira'].get("performance_degradation_rate", 20)
             missed_thresholds_rate = config['jira'].get("missed_thresholds_rate", 50)
             if not (jira_url and jira_user and jira_pwd and jira_project and jira_assignee):
-                print("Jira configuration values missing, proceeding without Jira")
+                globals().get("logger").info("Jira configuration values missing, proceeding without Jira")
             else:
                 jira_service = JiraWrapper(args, jira_url, jira_user, jira_pwd, jira_project, jira_assignee,
                                            check_functional_errors, check_performance_degradation,
@@ -69,7 +69,7 @@ class Reporter(object):
     def get_jira_service(self, args, jira_config, jira_additional_config):
         for each in ["jira_url", "jira_login", "jira_password", "jira_project"]:
             if not jira_config.get(each):
-                print("Jira configuration values missing, proceeding without Jira")
+                globals().get("logger").info("Jira configuration values missing, proceeding without Jira")
                 return None
         jira_service = JiraWrapper(args, jira_config["jira_url"], jira_config["jira_login"],
                                    jira_config["jira_password"], jira_config["jira_project"],
@@ -87,7 +87,7 @@ class Reporter(object):
     def get_rp_service(self, args, rp_config, rp_additional_config):
         for each in ["rp_host", "rp_token", "rp_project"]:
             if not rp_config.get(each):
-                print("RP configuration values missing, proceeding without RP")
+                globals().get("logger").warning("RP configuration values missing, proceeding without RP")
                 return None
         rp_project = rp_config['rp_project']
         rp_url = rp_config['rp_host']
@@ -99,7 +99,7 @@ class Reporter(object):
         performance_degradation_rate = rp_additional_config.get('performance_degradation_rate', 20)
         missed_thresholds_rate = rp_additional_config.get('missed_thresholds_rate', 50)
         if not all([rp_project, rp_url, rp_token, rp_launch_name]):
-            print("ReportPortal configuration values missing, proceeding "
+            globals().get("logger").warning("ReportPortal configuration values missing, proceeding "
                   "without report portal integration ")
             return None
         else:
@@ -121,7 +121,7 @@ class Reporter(object):
             if jira_service.valid:
                 jira_service.report_errors(aggregated_errors)
             else:
-                print("Failed connection to Jira or project does not exist")
+                globals().get("logger").error("Failed connection to Jira or project does not exist")
         if ado_reporter:
             ado_reporter.report_functional_errors(aggregated_errors)
 
@@ -135,7 +135,7 @@ class Reporter(object):
                 if performance_degradation_rate > jira_service.performance_degradation_rate:
                     jira_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
             else:
-                print("Failed connection to Jira or project does not exist")
+                globals().get("logger").error("Failed connection to Jira or project does not exist")
         if ado_reporter and performance_degradation_rate > 20:
             ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
@@ -149,7 +149,7 @@ class Reporter(object):
                 if missed_threshold_rate > jira_service.missed_thresholds_rate:
                     jira_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
             else:
-                print("Failed connection to Jira or project does not exist")
+                globals().get("logger").error("Failed connection to Jira or project does not exist")
         if ado_reporter and missed_threshold_rate > 50:
             ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
 

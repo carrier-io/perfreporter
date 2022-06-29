@@ -10,6 +10,7 @@ from os import remove, environ
 from json import JSONDecodeError, loads, dumps
 from datetime import datetime
 from time import time
+from centry_loki import log_loki
 
 
 class PostProcessor:
@@ -27,6 +28,14 @@ class PostProcessor:
         if not token:
             token = environ.get("token")
         headers = {'Authorization': f'bearer {token}'} if token else {}
+
+        loki_context = {"url": f"http://{args['influx_host']}:3100/loki/api/v1/push",
+                        "hostname": "control-tower", "labels": {"build_id": args['build_id'],
+                                                                "project": environ.get("project_id"),
+                                                                "report_id": args['report_id']}}
+
+        globals()["logger"] = log_loki.get_logger(loki_context)
+
         status = ""
         # TODO add post processing API
         # try:
@@ -35,10 +44,10 @@ class PostProcessor:
         #         r = requests.get(url, headers={**headers, 'Content-type': 'application/json'}).json()
         #         status = r["test_status"]["status"]
         #     if status == "Finished":
-        #         print("Post processing has already finished")
+        #         globals().get("logger").warning("Post processing has already finished")
         #         raise Exception("Post processing has already finished")
         # except:
-        #     print("Failed to check test status")
+        #     globals().get("logger").error("Failed to check test status")
         start_post_processing = time()
         if not junit_report:
             junit_report = environ.get("junit_report")
@@ -105,25 +114,25 @@ class PostProcessor:
             try:
                 users_count, duration, response_times = data_manager.write_comparison_data_to_influx()
             except Exception as e:
-                print("Failed to aggregate results")
-                print(e)
+                globals().get("logger").error("Failed to aggregate results")
+                globals().get("logger").error(e)
             try:
                 performance_degradation_rate, compare_with_baseline = data_manager.compare_with_baseline()
             except Exception as e:
-                print("Failed to compare with baseline")
-                print(e)
+                globals().get("logger").error("Failed to compare with baseline")
+                globals().get("logger").error(e)
             try:
                 total_checked_thresholds, missed_threshold_rate, compare_with_thresholds = data_manager.compare_with_thresholds()
             except Exception as e:
-                print("Failed to compare with thresholds")
-                print(e)
+                globals().get("logger").error("Failed to compare with thresholds")
+                globals().get("logger").error(e)
             try:
                 reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
                                                         jira_service, ado_reporter)
                 reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service,
                                                   jira_service, ado_reporter)
             except Exception as e:
-                print(e)
+                globals().get("logger").error(e)
             if junit_report:
                 try:
                     last_build = data_manager.get_last_build()
@@ -134,8 +143,8 @@ class PostProcessor:
                     requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
                     junit_report = None
                 except Exception as e:
-                    print("Failed to create junit report")
-                    print(e)
+                    globals().get("logger").error("Failed to create junit report")
+                    globals().get("logger").error(e)
             if galloper_url:
                 thresholds_quality_gate = environ.get("thresholds_quality_gate", 20)
                 try:
@@ -160,16 +169,16 @@ class PostProcessor:
                         'duration': duration, 'response_times': dumps(response_times)}
                 url = f'{galloper_url}/api/v1/backend_performance/reports/{project_id}'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
-                print(r.text)
+                globals().get("logger").info(r.text)
                 if r.json()["message"] == "updated" and self.str2bool(environ.get("remove_row_data")):
                     data_manager.delete_test_data()
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                    compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter)
         except Exception as e:
-            print(e)
+            globals().get("logger").error(e)
 
-        print("Total time -  %s seconds" % (round(time() - start_post_processing, 2)))
+        globals().get("logger").info("Total time -  %s seconds" % (round(time() - start_post_processing, 2)))
         if junit_report:
             parser = JTLParser()
             results = parser.parse_jtl()
@@ -205,8 +214,8 @@ class PostProcessor:
                     }
                     res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
                                                                        'Content-type': 'application/json'})
-                    print("Email notification")
-                    print(res.text)
+                    globals().get("logger").info("Email notification")
+                    globals().get("logger").info(res.text)
 
     def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
                                          token=None, integration=[], email_recipients=None, report_id=None,

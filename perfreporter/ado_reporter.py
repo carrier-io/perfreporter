@@ -77,7 +77,7 @@ class ADOReporter(object):
             details = self.create_functional_error_description(error, issue_hash)
             tags = ["Performance", "Error", self.args["influx_db"]]
             self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
-        print("ADO: functional errors reporting")
+        globals().get("logger").info("ADO: functional errors reporting")
 
     def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
         title = "Missed thresholds in test: " + str(self.args['simulation'])
@@ -86,7 +86,7 @@ class ADOReporter(object):
         details = self.create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash)
         tags = ["Performance", "Thresholds", self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
-        print("ADO: missed thresholds reporting")
+        globals().get("logger").info("ADO: missed thresholds reporting")
 
     def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
         title = "Performance degradation in test: " + str(self.args['simulation'])
@@ -96,7 +96,7 @@ class ADOReporter(object):
                                                                   issue_hash, self.args)
         tags = ["Performance", "Baseline", self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
-        print("ADO: performance degradation reporting")
+        globals().get("logger").info("ADO: performance degradation reporting")
 
     @staticmethod
     def create_functional_error_description(error, issue_hash):

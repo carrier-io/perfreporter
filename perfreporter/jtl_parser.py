@@ -45,12 +45,12 @@ class JTLParser(object):
                             else:
                                 requests[entry['request_name']]['KO'] += 1
                 except Exception as e:
-                    print(e)
+                    globals().get("logger").error(e)
                     unparsed_counter += 1
                     pass
 
         if unparsed_counter > 0:
-            print("Unparsed errors: %d" % unparsed_counter)
+            globals().get("logger").warning("Unparsed errors: %d" % unparsed_counter)
         for req in requests:
             requests[req]['response_time'] = int(np.percentile(requests[req]['response_time'], 95, interpolation="linear"))
         duration = int((end_timestamp - start_timestamp)/1000)
