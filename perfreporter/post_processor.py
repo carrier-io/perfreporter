@@ -19,7 +19,7 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        junit_report=False, results_bucket=None, prefix=None, token=None, integration=[],
+                        junit_report=False, results_bucket=None, prefix=None, token=None, integration={},
                         email_recipients=None):
         if not galloper_url:
             galloper_url = environ.get("galloper_url")
@@ -185,40 +185,46 @@ class PostProcessor:
             aggregated_requests = results['requests']
             thresholds = self.calculate_thresholds(results)
             JUnit_reporter.process_report(aggregated_requests, thresholds)
-        if "email" in integration and email_recipients:
+            {}.keys()
+        if integration and integration.get("reporters") and "reporter_email" in integration["reporters"].keys():
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
-                try:
-                    email_notification_id = requests.get(secrets_url + "email_notification_id",
-                                                         headers={'Authorization': f'bearer {token}',
-                                                                  'Content-type': 'application/json'}
-                                                         ).json()["secret"]
-                except (AttributeError, JSONDecodeError):
-                    email_notification_id = ""
+                email_notification_id = integration["reporters"]["reporter_email"].get("task_id")
                 if email_notification_id:
-                    emails = [x.strip() for x in email_recipients.split(",")]
-                    task_url = f"{galloper_url}/api/v1/tasks/task/{project_id}/{email_notification_id}"
-                    event = {
-                        "influx_host": args["influx_host"],
-                        "influx_port": args["influx_port"],
-                        "influx_user": args["influx_user"],
-                        "influx_password": args["influx_password"],
-                        "influx_db": args['influx_db'],
-                        "comparison_db": args['comparison_db'],
-                        "test": args['simulation'],
-                        "user_list": emails,
-                        "notification_type": "api",
-                        "test_type": args["type"],
-                        "env": args["env"],
-                        "users": users_count
-                    }
-                    res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
-                                                                       'Content-type': 'application/json'})
-                    logger.info("Email notification")
-                    logger.info(res.text)
+                    emails = integration["reporters"]["reporter_email"].get("recipients", [])
+                    if emails:
+                        task_url = f"{galloper_url}/api/v1/tasks/task/{project_id}/{email_notification_id}"
+                        event = {
+                            "galloper_url": galloper_url,
+                            "token": token,
+                            "project_id": project_id,
+                            "influx_host": args["influx_host"],
+                            "influx_port": args["influx_port"],
+                            "influx_user": args["influx_user"],
+                            "influx_password": args["influx_password"],
+                            "influx_db": args['influx_db'],
+                            "comparison_db": args['comparison_db'],
+                            "test": args['simulation'],
+                            "user_list": emails,
+                            "notification_type": "api",
+                            "test_type": args["type"],
+                            "env": args["env"],
+                            "users": users_count,
+                            "smtp_host": integration["reporters"]["reporter_email"]["integration_settings"]["host"],
+                            "smtp_port": integration["reporters"]["reporter_email"]["integration_settings"]["port"],
+                            "smtp_user": integration["reporters"]["reporter_email"]["integration_settings"]["user"],
+                            "smtp_sender": integration["reporters"]["reporter_email"]["integration_settings"]["sender"],
+                            "smtp_password": integration["reporters"]["reporter_email"]["integration_settings"]["passwd"],
+                            "error_rate": integration["reporters"]["reporter_email"]["error_rate"],
+                            "performance_degradation_rate": integration["reporters"]["reporter_email"]["performance_degradation_rate"],
+                            "missed_thresholds": integration["reporters"]["reporter_email"]["missed_thresholds"]
+                        }
+                        res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
+                                                                           'Content-type': 'application/json'})
+                        logger.info("Email notification")
+                        logger.info(res.text)
 
     def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
-                                         token=None, integration=[], email_recipients=None, report_id=None,
+                                         token=None, integration={}, email_recipients=None, report_id=None,
                                          influx_host=None, influx_user='', influx_password=''):
 
         headers = {'Authorization': f'bearer {token}'} if token else {}
