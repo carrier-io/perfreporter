@@ -19,8 +19,7 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        junit_report=False, results_bucket=None, prefix=None, token=None, integration={},
-                        email_recipients=None):
+                        results_bucket=None, prefix=None, token=None, integration={}):
         if not galloper_url:
             galloper_url = environ.get("galloper_url")
         if not project_id:
@@ -49,8 +48,6 @@ class PostProcessor:
         # except:
         #     logger.error("Failed to check test status")
         start_post_processing = time()
-        if not junit_report:
-            junit_report = environ.get("junit_report")
         data_manager = DataManager(args, galloper_url, token, project_id, logger)
         if self.config_file:
             with open("/tmp/config.yaml", "w") as f:
@@ -133,7 +130,7 @@ class PostProcessor:
                                                   jira_service, ado_reporter)
             except Exception as e:
                 logger.error(e)
-            if junit_report:
+            if integration and integration.get("reporters") and "quality_gate" in integration["reporters"].keys():
                 try:
                     last_build = data_manager.get_last_build()
                     total_checked, violations, thresholds = data_manager.get_thresholds(last_build, True)
@@ -141,14 +138,12 @@ class PostProcessor:
                     files = {'file': open(report, 'rb')}
                     upload_url = f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}'
                     requests.post(upload_url, allow_redirects=True, files=files, headers=headers)
-                    junit_report = None
                 except Exception as e:
                     logger.error("Failed to create junit report")
                     logger.error(e)
             if galloper_url:
-                thresholds_quality_gate = environ.get("thresholds_quality_gate", 20)
                 try:
-                    thresholds_quality_gate = int(thresholds_quality_gate)
+                    thresholds_quality_gate = integration["reporters"]["quality_gate"]
                 except:
                     thresholds_quality_gate = 20
                 if total_checked_thresholds:
@@ -161,7 +156,6 @@ class PostProcessor:
                 else:
                     test_status = {"status": "Finished", "percentage": 100, "description": "Test is finished"}
                 lg_type = args["influx_db"].split("_")[0] if "_" in args["influx_db"] else args["influx_db"]
-                # TODO set status to failed or passed based on thresholds
                 data = {'build_id': args["build_id"], 'test_name': args["simulation"], 'lg_type': lg_type,
                         'missed': int(missed_threshold_rate),
                         'test_status': test_status,
@@ -170,8 +164,19 @@ class PostProcessor:
                 url = f'{galloper_url}/api/v1/backend_performance/reports/{project_id}'
                 r = requests.put(url, json=data, headers={**headers, 'Content-type': 'application/json'})
                 logger.info(r.text)
-                if r.json()["message"] == "updated" and self.str2bool(environ.get("remove_row_data")):
-                    data_manager.delete_test_data()
+                try:
+                    if r.json()["message"] == "updated" and self.str2bool(environ.get("remove_row_data")):
+                        data_manager.delete_test_data()
+                except:
+                    logger.error("Failed update report")
+                    data = {"test_status": {"status": "ERROR", "percentage": 100, "description": "Failed update report"}}
+                    headers = {'content-type': 'application/json', 'Authorization': f'bearer {token}'}
+                    url = f'{galloper_url}/api/v1/backend_performance/report_status/{project_id}/{args["report_id"]}'
+                    response = requests.put(url, json=data, headers=headers)
+                    try:
+                        logger.info(response.json()["message"])
+                    except:
+                        logger.error(response.text)
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
                                    compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter)
@@ -179,13 +184,12 @@ class PostProcessor:
             logger.error(e)
 
         logger.info("Total time -  %s seconds" % (round(time() - start_post_processing, 2)))
-        if junit_report:
-            parser = JTLParser()
-            results = parser.parse_jtl()
-            aggregated_requests = results['requests']
-            thresholds = self.calculate_thresholds(results)
-            JUnit_reporter.process_report(aggregated_requests, thresholds)
-            {}.keys()
+        # if junit_report:
+        #     parser = JTLParser()
+        #     results = parser.parse_jtl()
+        #     aggregated_requests = results['requests']
+        #     thresholds = self.calculate_thresholds(results)
+        #     JUnit_reporter.process_report(aggregated_requests, thresholds)
         if integration and integration.get("reporters") and "reporter_email" in integration["reporters"].keys():
             if galloper_url and token and project_id:
                 email_notification_id = integration["reporters"]["reporter_email"].get("task_id")
@@ -223,12 +227,12 @@ class PostProcessor:
                         logger.info("Email notification")
                         logger.info(res.text)
 
-    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix, junit=False,
-                                         token=None, integration={}, email_recipients=None, report_id=None,
+    def distributed_mode_post_processing(self, galloper_url, project_id, results_bucket, prefix,
+                                         token=None, integration={}, report_id=None,
                                          influx_host=None, influx_user='', influx_password=''):
 
         headers = {'Authorization': f'bearer {token}'} if token else {}
-        if project_id and galloper_url and report_id and influx_host:
+        if project_id and galloper_url and report_id:
             r = requests.get(f'{galloper_url}/api/v1/backend_performance/reports/{project_id}?report_id={report_id}',
                              headers={**headers, 'Content-type': 'application/json'}).json()
             start_time = r["start_time"]
@@ -237,11 +241,12 @@ class PostProcessor:
                 'type': r['type'],
                 'simulation': r['name'],
                 'build_id': r['build_id'],
+                'report_id': report_id,
                 'env': r['environment'],
-                'influx_host': influx_host,
+                'influx_host': environ.get(f"influx_host"),
                 'influx_port': '8086',
-                'influx_user': influx_user,
-                'influx_password': influx_password,
+                'influx_user': environ.get(f"influx_user"),
+                'influx_password': environ.get(f"influx_password"),
                 'comparison_metric': 'pct95',
                 'influx_db': environ.get(f"{r['lg_type']}_db") if environ.get(f"{r['lg_type']}_db") else r["lg_type"],
                 'comparison_db': environ.get("comparison_db") if environ.get("comparison_db") else "comparison",
@@ -266,42 +271,41 @@ class PostProcessor:
                     'Response': [each['Response body']],
                     'Error_message': [each['Error message']],
                 }
-            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
-                                 token,
-                                 integration, email_recipients)
+            self.post_processing(args, aggregated_errors, galloper_url, project_id, results_bucket, prefix,
+                                 token, integration)
 
-        else:
-            errors = []
-            args = {}
-            # get list of files
-            r = requests.get(f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}',
-                             headers={**headers, 'Content-type': 'application/json'})
-            files = []
-            for each in r.json()["rows"]:
-                if each["name"].startswith(prefix):
-                    files.append(each["name"])
-
-            # download and unpack each file
-            bucket_path = f'{galloper_url}/api/v1/artifacts/artifact/{project_id}/{results_bucket}'
-            for file in files:
-                downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
-                with open(f"/tmp/{file}", 'wb') as f:
-                    f.write(downloaded_file.content)
-                shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
-                remove(f"/tmp/{file}")
-                with open(f"/tmp/{file}/".replace(".zip", "") + "aggregated_errors.json", "r") as f:
-                    errors.append(loads(f.read()))
-                if not args:
-                    with open(f"/tmp/{file}/".replace(".zip", "") + "args.json", "r") as f:
-                        args = loads(f.read())
-
-                # delete file from minio
-                requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
-
-            # aggregate errors from each load generator
-            aggregated_errors = self.aggregate_errors(errors)
-            self.post_processing(args, aggregated_errors, galloper_url, project_id, junit, results_bucket, prefix,
-                                 token, integration, email_recipients)
+        # else:
+        #     errors = []
+        #     args = {}
+        #     # get list of files
+        #     r = requests.get(f'{galloper_url}/api/v1/artifacts/artifacts/{project_id}/{results_bucket}',
+        #                      headers={**headers, 'Content-type': 'application/json'})
+        #     files = []
+        #     for each in r.json()["rows"]:
+        #         if each["name"].startswith(prefix):
+        #             files.append(each["name"])
+        #
+        #     # download and unpack each file
+        #     bucket_path = f'{galloper_url}/api/v1/artifacts/artifact/{project_id}/{results_bucket}'
+        #     for file in files:
+        #         downloaded_file = requests.get(f'{bucket_path}/{file}', headers=headers)
+        #         with open(f"/tmp/{file}", 'wb') as f:
+        #             f.write(downloaded_file.content)
+        #         shutil.unpack_archive(f"/tmp/{file}", "/tmp/" + file.replace(".zip", ""), 'zip')
+        #         remove(f"/tmp/{file}")
+        #         with open(f"/tmp/{file}/".replace(".zip", "") + "aggregated_errors.json", "r") as f:
+        #             errors.append(loads(f.read()))
+        #         if not args:
+        #             with open(f"/tmp/{file}/".replace(".zip", "") + "args.json", "r") as f:
+        #                 args = loads(f.read())
+        #
+        #         # delete file from minio
+        #         requests.delete(f'{bucket_path}/file?fname[]={file}', headers=headers)
+        #
+        #     # aggregate errors from each load generator
+        #     aggregated_errors = self.aggregate_errors(errors)
+        #     self.post_processing(args, aggregated_errors, galloper_url, project_id, results_bucket, prefix,
+        #                          token, integration)
 
     @staticmethod
     def aggregate_errors(test_errors):
