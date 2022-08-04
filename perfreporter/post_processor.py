@@ -143,7 +143,7 @@ class PostProcessor:
                     logger.error(e)
             if galloper_url:
                 try:
-                    thresholds_quality_gate = integration["reporters"]["quality_gate"]
+                    thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
                 except:
                     thresholds_quality_gate = 20
                 if total_checked_thresholds:

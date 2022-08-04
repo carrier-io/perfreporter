@@ -49,8 +49,7 @@ class JUnit_reporter(object):
         for th in thresholds:
             threshold_test_cases.append(TestCase(name=f'Threshold for {th["request_name"]}, target - {th["target"]}',
                                                  stdout=f'Value: {str(th["metric"])} {mapping.get(th["target"])}. '
-                                                        f'Yellow threshold: {th["yellow"]} {mapping.get(th["target"])},'
-                                                        f' red threshold: {th["red"]} {mapping.get(th["target"])}'))
+                                                        f'Threshold value: {th["value"]} {mapping.get(th["target"])}'))
 
             if th['threshold'] != 'green':
                 threshold_test_cases[-1].add_failure_info(f'{th["target"]} for {th["request_name"]} exceeded '
