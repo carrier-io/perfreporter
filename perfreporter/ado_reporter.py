@@ -70,6 +70,7 @@ class ADOReporter(object):
         self.other_fields = self.config.get("custom_fields", {})
         self.assignee = self.config.get("assignee", None)
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
+        print(ado_config)
 
     def report_functional_errors(self, errors):
         for each in errors:
