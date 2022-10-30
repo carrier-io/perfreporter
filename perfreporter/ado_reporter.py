@@ -9,12 +9,13 @@ QUERY_ISSUE_URL = "https://dev.azure.com/{organization}/{project}/_apis/wit/wiql
 
 
 class ADOConnector(object):
-    def __init__(self, organization, project, personal_access_token, team=None, issue_type="task"):
+    def __init__(self, organization, project, personal_access_token, issue_type, team=None):
         self.auth = ('', personal_access_token)
         self.project = f"{project}"
         self.team = f"{project}"
         if team:
             self.team = f"{project}\\{team}"
+        issue_type = "task" if issue_type is None else issue_type
         self.url = CREATE_ISSUE_URL.format(organization=organization, project=project, type=issue_type, rules="false",
                                            notify="false")
         self.query_url = QUERY_ISSUE_URL.format(organization=organization, project=project)
@@ -42,8 +43,10 @@ class ADOConnector(object):
                 _piece = {"op": "add", "path": key, "from": None, "value": value}
                 body.append(_piece)
         if not self.search_for_issue(issue_hash):
-            post(self.url, auth=self.auth, json=body,
-                 headers={'content-type': 'application/json-patch+json'}).json()
+            return post(self.url, auth=self.auth, json=body,
+                        headers={'content-type': 'application/json-patch+json'})
+
+        return {}
 
     def search_for_issue(self, issue_hash=None):
         q = f"SELECT [System.Id] From WorkItems Where [System.Description] Contains \"{issue_hash}\""
@@ -63,7 +66,7 @@ class ADOReporter(object):
         project = self.config.get("project")
         personal_access_token = self.config.get("pat")
         team = self.config.get("team", None)
-        issue_type = self.config.get("issue_type", "task")
+        issue_type = self.config.get("issue_type")
         self.other_fields = self.config.get("custom_fields", {})
         self.assignee = self.config.get("assignee", None)
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
@@ -76,7 +79,9 @@ class ADOReporter(object):
             issue_hash = self.get_functional_error_hash_code(error, self.args)
             details = self.create_functional_error_description(error, issue_hash)
             tags = ["Performance", "Error", self.args["influx_db"]]
-            self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
+            post_result = self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
+            if post_result:
+                print(post_result.status_code, post_result.reason)
         print("ADO: functional errors reporting")
 
     def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
