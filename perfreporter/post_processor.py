@@ -9,7 +9,7 @@ import shutil
 from os import remove, environ
 from json import JSONDecodeError, loads, dumps
 from datetime import datetime
-from time import time
+from time import time, sleep
 from centry_loki import log_loki
 
 
@@ -54,7 +54,7 @@ class PostProcessor:
                 f.write(self.config_file)
         reporter = Reporter(logger)
         rp_service, jira_service = reporter.parse_config_file(args)
-        ado_reporter = None
+
         if not jira_service and "jira" in integration:
             if galloper_url and token and project_id:
                 secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
@@ -89,18 +89,9 @@ class PostProcessor:
                 except (AttributeError, JSONDecodeError):
                     rp_additional_config = {}
                 rp_service = reporter.get_rp_service(args, rp_core_config, rp_additional_config)
-
-        if "azure_devops" in integration:
-            if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
-                try:
-                    ado_config = loads(requests.get(secrets_url + "ado",
-                                                    headers={**headers, 'Content-type': 'application/json'}).json()[
-                                           "secret"])
-                except (AttributeError, JSONDecodeError):
-                    ado_config = {}
-                if ado_config:
-                    ado_reporter = ADOReporter(ado_config, args)
+        ado_config = integration.get('reporters', {}).get('azure_devops')
+        if ado_config:
+            ado_reporter = ADOReporter(ado_config, args)
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
