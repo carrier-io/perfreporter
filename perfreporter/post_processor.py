@@ -9,7 +9,7 @@ import shutil
 from os import remove, environ
 from json import JSONDecodeError, loads, dumps
 from datetime import datetime
-from time import time, sleep
+from time import time
 from centry_loki import log_loki
 
 
@@ -55,22 +55,15 @@ class PostProcessor:
         reporter = Reporter(logger)
         rp_service, jira_service = reporter.parse_config_file(args)
 
-        if not jira_service and "jira" in integration:
+        if not jira_service and integration and integration.get("reporters") and "reporter_jira" in integration["reporters"]:
             if galloper_url and token and project_id:
-                secrets_url = f"{galloper_url}/api/v1/secrets/secret/{project_id}/"
-                try:
-                    jira_core_config = loads(requests.get(secrets_url + "jira",
-                                                          headers={**headers,
-                                                                   'Content-type': 'application/json'}).json()[
-                                                 "secret"])
-                except (AttributeError, JSONDecodeError):
-                    jira_core_config = {}
-                try:
-                    jira_additional_config = loads(requests.get(secrets_url + "jira_perf_api",
-                                                                headers={**headers, 'Content-type': 'application/json'}
-                                                                ).json()["secret"])
-                except (AttributeError, JSONDecodeError):
-                    jira_additional_config = {}
+                jira_core_config = {}
+                jira_core_config["jira_url"] = integration["reporters"]["reporter_jira"]["integration_settings"]["url"]
+                jira_core_config["jira_login"] = integration["reporters"]["reporter_jira"]["integration_settings"]["login"]
+                jira_core_config["jira_password"] = integration["reporters"]["reporter_jira"]["integration_settings"]["passwd"]
+                jira_core_config["jira_project"] = integration["reporters"]["reporter_jira"]["integration_settings"]["project"]
+                jira_core_config["issue_type"] = integration["reporters"]["reporter_jira"]["integration_settings"]["issue_type"]
+                jira_additional_config = {k: v for k, v in integration["reporters"]["reporter_jira"].items() if k != "integration_settings"}
                 jira_service = reporter.get_jira_service(args, jira_core_config, jira_additional_config)
 
         if not rp_service and "report_portal" in integration:
