@@ -83,8 +83,7 @@ class PostProcessor:
                     rp_additional_config = {}
                 rp_service = reporter.get_rp_service(args, rp_core_config, rp_additional_config)
         ado_config = integration.get('reporters', {}).get('azure_devops')
-        if ado_config:
-            ado_reporter = ADOReporter(ado_config, args)
+        ado_reporter = ADOReporter(ado_config, args) if ado_config else None
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
