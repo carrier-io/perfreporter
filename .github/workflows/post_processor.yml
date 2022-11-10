@@ -1,0 +1,30 @@
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+  
+jobs:
+  trigger_zip_builder:
+    runs-on: ubuntu-latest
+    env:
+      PP_TOKEN: ${{ secrets.PP_TOKEN }}
+      PP_URL: "https://api.github.com/repos/${{ github.repository_owner }}/performance_post_processor/dispatches"
+    steps:
+    - name: echoing repo
+      run: echo $PP_URL
+    - name: triggering event
+      run: | 
+        curl \
+        -X POST \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $PP_TOKEN" \
+        $PP_URL \
+        -d '{
+          "event_type": "make_zip",
+          "client_payload": {
+            "from_commit": "${{ github.sha }}",
+            "initiator": "${{ github.repository }}"
+          }
+        }' \
+        --fail --silent
