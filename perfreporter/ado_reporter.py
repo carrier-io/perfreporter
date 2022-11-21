@@ -59,7 +59,7 @@ class ADOConnector(object):
 
 class ADOReporter(object):
 
-    def __init__(self, ado_config, args):
+    def __init__(self, args, ado_config, quality_gate_config):
         self.config = ado_config
         self.args = args
         organization = self.config.get("org")
@@ -69,6 +69,11 @@ class ADOReporter(object):
         issue_type = self.config.get("issue_type")
         self.other_fields = self.config.get("custom_fields", {})
         self.assignee = self.config.get("assignee", None)
+        self.check_functional_errors = quality_gate_config.get("check_functional_errors", False)
+        self.check_performance_degradation = quality_gate_config.get("check_performance_degradation", False)
+        self.check_missed_thresholds = quality_gate_config.get("check_missed_thresholds", False)
+        self.performance_degradation_rate = quality_gate_config.get("performance_degradation_rate", 20)
+        self.missed_thresholds_rate = quality_gate_config.get("missed_thresholds_rate", 50)
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
 
     def report_functional_errors(self, errors):

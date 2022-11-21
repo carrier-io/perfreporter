@@ -3,6 +3,7 @@ import yaml
 
 from perfreporter.report_portal import ReportPortal
 from perfreporter.jira_wrapper import JiraWrapper
+from perfreporter.ado_reporter import ADOReporter
 
 
 class Reporter(object):
@@ -67,7 +68,27 @@ class Reporter(object):
 
         return rp_service, jira_service
 
-    def get_jira_service(self, args, jira_config, jira_additional_config):
+    def parse_quality_gate(self, quality_gate_data: dict) -> dict:
+        '''Parse QualityGate configuration from integrations.
+        If any of the values in the dictionary is -1, 
+        then we set the corresponding flag as False.
+        '''
+        self.logger.info("Parsing QualityGate configuration")
+        try:
+            return {
+                'check_functional_errors': quality_gate_data['error_rate'] != -1,
+                'check_performance_degradation': quality_gate_data['degradation_rate'] != -1,
+                'check_missed_thresholds': quality_gate_data['missed_thresholds'] != -1,
+                'error_rate': quality_gate_data['error_rate'],
+                'performance_degradation_rate': quality_gate_data['degradation_rate'],
+                'missed_thresholds_rate': quality_gate_data['missed_thresholds'],
+            }
+        except Exception as e:
+            self.logger.error("Failed to parse QualityGate configuration")
+            self.logger.error(e)
+            return {}
+
+    def get_jira_service(self, args, jira_config, jira_additional_config, quality_gate_config):
         for each in ["jira_url", "jira_login", "jira_password", "jira_project"]:
             if not jira_config.get(each):
                 self.logger.info("Jira configuration values missing, proceeding without Jira")
@@ -75,12 +96,13 @@ class Reporter(object):
         jira_service = JiraWrapper(args, jira_config["jira_url"], jira_config["jira_login"],
                                    jira_config["jira_password"], jira_config["jira_project"],
                                    jira_additional_config.get("assignee", jira_config["jira_login"]),
-                                   jira_additional_config.get("check_functional_errors", False),
-                                   jira_additional_config.get("check_performance_degradation", False),
-                                   jira_additional_config.get("check_missed_thresholds", False),
-                                   jira_additional_config.get("performance_degradation_rate", 20),
-                                   jira_additional_config.get("missed_thresholds_rate", 50),
-                                   jira_config.get("issue_type", "Bug"), jira_additional_config.get("jira_labels", ""),
+                                   quality_gate_config.get("check_functional_errors", False),
+                                   quality_gate_config.get("check_performance_degradation", False),
+                                   quality_gate_config.get("check_missed_thresholds", False),
+                                   quality_gate_config.get("performance_degradation_rate", 20),
+                                   quality_gate_config.get("missed_thresholds_rate", 50),
+                                   jira_config.get("issue_type", "Bug"), 
+                                   jira_additional_config.get("jira_labels", ""),
                                    jira_additional_config.get("jira_watchers", ""),
                                    jira_additional_config.get("jira_epic_key", None))
         return jira_service
@@ -110,6 +132,13 @@ class Reporter(object):
             rp_service.my_error_handler(sys.exc_info())
         return rp_service
 
+    def get_ado_reporter(self, args, ado_config, quality_gate_config):
+        for each in ["org", "project", "pat"]:
+            if not ado_config.get(each):
+                self.logger.info("Azure DevOps configuration values missing, proceeding without Azure DevOps")
+                return None
+        return ADOReporter(args, ado_config, quality_gate_config)
+
     def report_errors(self, aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
                       missed_threshold_rate, compare_with_thresholds, ado_reporter):
         if rp_service:
@@ -122,7 +151,7 @@ class Reporter(object):
                 jira_service.report_errors(aggregated_errors)
             else:
                 self.logger.error("Failed connection to Jira or project does not exist")
-        if ado_reporter:
+        if ado_reporter and ado_reporter.check_functional_errors:
             ado_reporter.report_functional_errors(aggregated_errors)
 
     def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline, rp_service, jira_service,
@@ -135,8 +164,9 @@ class Reporter(object):
                     jira_service.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
             else:
                 self.logger.error("Failed connection to Jira or project does not exist")
-        if ado_reporter and performance_degradation_rate > 20:
-            ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
+        if ado_reporter and ado_reporter.check_performance_degradation:
+            if performance_degradation_rate > ado_reporter.performance_degradation_rate:
+                ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
     def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds, rp_service, jira_service,
                                  ado_reporter):
@@ -148,6 +178,6 @@ class Reporter(object):
                     jira_service.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
             else:
                 self.logger.error("Failed connection to Jira or project does not exist")
-        if ado_reporter and missed_threshold_rate > 50:
-            ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
-
+        if ado_reporter and ado_reporter.check_missed_thresholds:
+            if missed_threshold_rate > ado_reporter.missed_thresholds_rate:
+                ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
