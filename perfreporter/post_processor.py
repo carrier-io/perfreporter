@@ -2,7 +2,6 @@ from perfreporter.data_manager import DataManager
 from perfreporter.reporter import Reporter
 from perfreporter.jtl_parser import JTLParser
 from perfreporter.junit_reporter import JUnit_reporter
-from perfreporter.ado_reporter import ADOReporter
 import requests
 import re
 import shutil
@@ -19,7 +18,9 @@ class PostProcessor:
         self.config_file = config_file
 
     def post_processing(self, args, aggregated_errors, galloper_url=None, project_id=None,
-                        results_bucket=None, prefix=None, token=None, integration={}):
+                        results_bucket=None, prefix=None, token=None, integration=None):
+        if not integration:
+            integration = {}      
         if not galloper_url:
             galloper_url = environ.get("galloper_url")
         if not project_id:
@@ -54,8 +55,13 @@ class PostProcessor:
                 f.write(self.config_file)
         reporter = Reporter(logger)
         rp_service, jira_service = reporter.parse_config_file(args)
+        
+        if integration.get('processing', {}).get('quality_gate'):
+            quality_gate_config = reporter.parse_quality_gate(integration['processing']['quality_gate'])
+        else:
+            quality_gate_config = {}
 
-        if not jira_service and integration and integration.get("reporters") and "reporter_jira" in integration["reporters"]:
+        if not jira_service and integration.get('reporters', {}).get('reporter_jira'):
             if galloper_url and token and project_id:
                 jira_core_config = {}
                 jira_core_config["jira_url"] = integration["reporters"]["reporter_jira"]["integration_settings"]["url"]
@@ -64,7 +70,7 @@ class PostProcessor:
                 jira_core_config["jira_project"] = integration["reporters"]["reporter_jira"]["integration_settings"]["project"]
                 jira_core_config["issue_type"] = integration["reporters"]["reporter_jira"]["integration_settings"]["issue_type"]
                 jira_additional_config = {k: v for k, v in integration["reporters"]["reporter_jira"].items() if k != "integration_settings"}
-                jira_service = reporter.get_jira_service(args, jira_core_config, jira_additional_config)
+                jira_service = reporter.get_jira_service(args, jira_core_config, jira_additional_config, quality_gate_config)
 
         if not rp_service and "report_portal" in integration:
             if galloper_url and token and project_id:
@@ -82,8 +88,9 @@ class PostProcessor:
                 except (AttributeError, JSONDecodeError):
                     rp_additional_config = {}
                 rp_service = reporter.get_rp_service(args, rp_core_config, rp_additional_config)
+                
         ado_config = integration.get('reporters', {}).get('azure_devops')
-        ado_reporter = ADOReporter(ado_config, args) if ado_config else None
+        ado_reporter = reporter.get_ado_reporter(args, ado_config, quality_gate_config) if ado_config else None
 
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
@@ -113,7 +120,8 @@ class PostProcessor:
                                                   jira_service, ado_reporter)
             except Exception as e:
                 logger.error(e)
-            if integration and integration.get("reporters") and "quality_gate" in integration["reporters"].keys():
+            if quality_gate_config:
+            # if integration and integration.get("reporters") and "quality_gate" in integration["reporters"].keys():
                 try:
                     last_build = data_manager.get_last_build()
                     total_checked, violations, thresholds = data_manager.get_thresholds(last_build, True)
@@ -126,7 +134,8 @@ class PostProcessor:
                     logger.error(e)
             if galloper_url:
                 try:
-                    thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
+                    thresholds_quality_gate = int(quality_gate_config["missed_thresholds_rate"])
+                    # thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
                 except:
                     thresholds_quality_gate = 20
                 if total_checked_thresholds:
@@ -201,10 +210,14 @@ class PostProcessor:
                             "smtp_user": integration["reporters"]["reporter_email"]["integration_settings"]["user"],
                             "smtp_sender": integration["reporters"]["reporter_email"]["integration_settings"]["sender"],
                             "smtp_password": integration["reporters"]["reporter_email"]["integration_settings"]["passwd"],
-                            "error_rate": integration["reporters"]["reporter_email"]["error_rate"],
-                            "performance_degradation_rate": integration["reporters"]["reporter_email"]["performance_degradation_rate"],
-                            "missed_thresholds": integration["reporters"]["reporter_email"]["missed_thresholds"]
                         }
+                        if quality_gate_config.get('check_functional_errors'):
+                            event["error_rate"] = quality_gate_config['error_rate']
+                        if quality_gate_config.get('check_performance_degradation'):
+                            event["performance_degradation_rate"] = quality_gate_config['performance_degradation_rate']
+                        if quality_gate_config.get('check_missed_thresholds'):
+                            event["missed_thresholds"] = quality_gate_config['missed_thresholds_rate']
+                        
                         res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {token}',
                                                                            'Content-type': 'application/json'})
                         logger.info("Email notification")
