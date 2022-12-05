@@ -4,6 +4,7 @@ import yaml
 from perfreporter.report_portal import ReportPortal
 from perfreporter.jira_wrapper import JiraWrapper
 from perfreporter.ado_reporter import ADOReporter
+from perfreporter.engagement_reporter import EngagementReporter
 
 
 class Reporter(object):
@@ -139,8 +140,20 @@ class Reporter(object):
                 return None
         return ADOReporter(args, ado_config, quality_gate_config)
 
+
+    def get_engagement_rp_service(self, args, galloper_url, token, payload, project_id):
+        for field in ('report_url', 'id', 'query_url'):
+            if field not in payload:
+                self.logger.warning(f"RP configuration missing value for {field}")
+                return
+        report_url = galloper_url + payload['report_url'] + '/' + project_id
+        query_url = galloper_url + payload['query_url'] + '/' + project_id
+        reporter = EngagementReporter(args, report_url, query_url, token)
+        return reporter
+
+
     def report_errors(self, aggregated_errors, rp_service, jira_service, performance_degradation_rate, compare_with_baseline,
-                      missed_threshold_rate, compare_with_thresholds, ado_reporter):
+                      missed_threshold_rate, compare_with_thresholds, ado_reporter, engagement_reporter):
         if rp_service:
             rp_service.report_test_results(aggregated_errors, performance_degradation_rate, compare_with_baseline,
                                            missed_threshold_rate, compare_with_thresholds)
@@ -153,9 +166,13 @@ class Reporter(object):
                 self.logger.error("Failed connection to Jira or project does not exist")
         if ado_reporter and ado_reporter.check_functional_errors:
             ado_reporter.report_functional_errors(aggregated_errors)
+        
+        if engagement_reporter:
+            engagement_reporter.report_errors(aggregated_errors)
+
 
     def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline, rp_service, jira_service,
-                                       ado_reporter):
+                                       ado_reporter, engagement_reporter):
 
         if jira_service and jira_service.check_performance_degradation:
             jira_service.connect()
@@ -168,8 +185,12 @@ class Reporter(object):
             if performance_degradation_rate > ado_reporter.performance_degradation_rate:
                 ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
+        if engagement_reporter:
+            engagement_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
+
+
     def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds, rp_service, jira_service,
-                                 ado_reporter):
+                                 ado_reporter, engagement_reporter):
 
         if jira_service and jira_service.check_missed_thresholds:
             jira_service.connect()
@@ -181,3 +202,6 @@ class Reporter(object):
         if ado_reporter and ado_reporter.check_missed_thresholds:
             if missed_threshold_rate > ado_reporter.missed_thresholds_rate:
                 ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
+
+        if engagement_reporter:
+            engagement_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
