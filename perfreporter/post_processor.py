@@ -133,13 +133,14 @@ class PostProcessor:
                     logger.error("Failed to create junit report")
                     logger.error(e)
             if galloper_url:
-                try:
-                    thresholds_quality_gate = int(quality_gate_config["missed_thresholds_rate"])
-                    # thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
-                except:
-                    thresholds_quality_gate = 20
+                # try:
+                #     thresholds_quality_gate = int(quality_gate_config["missed_thresholds_rate"])
+                #     # thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
+                # except:
+                #     thresholds_quality_gate = 20
                 if total_checked_thresholds:
-                    if missed_threshold_rate > thresholds_quality_gate:
+                    if quality_gate_config.get('check_missed_thresholds') and missed_threshold_rate > quality_gate_config["missed_thresholds_rate"]:
+                        thresholds_quality_gate = quality_gate_config["missed_thresholds_rate"]
                         test_status = {"status": "Failed", "percentage": 100,
                                        "description": f"Missed more then {thresholds_quality_gate}% thresholds"}
                     else:
