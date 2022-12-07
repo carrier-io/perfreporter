@@ -31,8 +31,8 @@ class IssuesConnector(object):
     def search_for_issue(self, issue_hash):
         resp = get(self.query_url, params={'source.id': issue_hash, 'status': 'Open'}, headers=self.headers)
 
-        # if not resp.status_code == 200:
-        #     return None
+        if not resp.status_code == 200:
+            return None
 
         data = resp.json()
         if not data['total'] == 0:
@@ -41,12 +41,13 @@ class IssuesConnector(object):
 
 
 class EngagementReporter:
-    def __init__(self, args, report_url, query_url, token):
+    def __init__(self, args, report_url, query_url, token, engagement_id):
         self.args = args
+        self.engagement_id = engagement_id
         self.issues_connector = IssuesConnector(report_url, query_url, token)
 
     @staticmethod
-    def _prepare_issue_payload(issue_hash, title, description, severity):
+    def _prepare_issue_payload(issue_hash, title, description, severity, engagement_id):
         return {
             'id': issue_hash,
             'title': title,
@@ -55,7 +56,8 @@ class EngagementReporter:
             'project': None,
             'asset': None,
             'type': 'Bug',
-            'source': 'backend_performance'
+            'source': 'backend_performance',
+            'engagement': engagement_id
         }
 
     def report_errors(self, aggregated_errors):
@@ -66,7 +68,7 @@ class EngagementReporter:
                     + str(aggregated_errors[error]['Error_message'])[0:100]
             
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
-            payload = self._prepare_issue_payload(issue_hash, title, description, severity="High")
+            payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)
             self.issues_connector.create_issue(payload)
 
 
@@ -78,7 +80,7 @@ class EngagementReporter:
         title = "Performance degradation in test: " + str(self.args['simulation'])
         description = self.create_performance_degradation_description(performance_degradation_rate,
                                                                       compare_with_baseline, issue_hash, self.args)
-        payload = self._prepare_issue_payload(issue_hash, title, description, severity="High")                                                
+        payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)                                                
         self.issues_connector.create_issue(payload)
 
 
@@ -89,7 +91,7 @@ class EngagementReporter:
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         description = self.create_missed_thresholds_description(missed_threshold_rate,
                                                                 compare_with_thresholds, issue_hash)
-        payload = self._prepare_issue_payload(issue_hash, title, description, severity="High")                                                
+        payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)                                                
         self.issues_connector.create_issue(payload)
 
     

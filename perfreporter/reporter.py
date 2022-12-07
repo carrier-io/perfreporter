@@ -148,7 +148,8 @@ class Reporter(object):
                 return
         report_url = galloper_url + payload['report_url'] + '/' + project_id
         query_url = galloper_url + payload['query_url'] + '/' + project_id
-        reporter = EngagementReporter(args, report_url, query_url, token)
+        engagement_id = payload['id']
+        reporter = EngagementReporter(args, report_url, query_url, token, engagement_id)
         return reporter
 
 
