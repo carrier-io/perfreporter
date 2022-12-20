@@ -186,7 +186,7 @@ class Reporter(object):
             if performance_degradation_rate > ado_reporter.performance_degradation_rate:
                 ado_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
-        if engagement_reporter:
+        if engagement_reporter and performance_degradation_rate > 0:
             engagement_reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline)
 
 
@@ -204,5 +204,5 @@ class Reporter(object):
             if missed_threshold_rate > ado_reporter.missed_thresholds_rate:
                 ado_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
 
-        if engagement_reporter:
+        if engagement_reporter and missed_threshold_rate > 0:
             engagement_reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds)
