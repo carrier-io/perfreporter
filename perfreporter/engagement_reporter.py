@@ -15,7 +15,7 @@ class IssuesConnector(object):
         }
 
     def create_issue(self, payload):
-        issue_hash = payload['id']
+        issue_hash = payload['issue_id']
         exists = self.search_for_issue(issue_hash)
         if exists:
             print(f"The issue with {payload['title']} title already exists")
@@ -46,18 +46,18 @@ class EngagementReporter:
         self.engagement_id = engagement_id
         self.issues_connector = IssuesConnector(report_url, query_url, token)
 
-    @staticmethod
-    def _prepare_issue_payload(issue_hash, title, description, severity, engagement_id):
+    def _prepare_issue_payload(self, issue_hash, title, description):
         return {
-            'id': issue_hash,
+            'issue_id': issue_hash,
             'title': title,
             'description': description,
-            'severity': severity,
+            'severity': "High",
             'project': None,
             'asset': None,
-            'type': 'Bug',
+            'type': 'Issue',
             'source': 'backend_performance',
-            'engagement': engagement_id
+            'engagement': self.engagement_id,
+            'report_id': self.args['report_id'],
         }
 
     def report_errors(self, aggregated_errors):
@@ -68,19 +68,17 @@ class EngagementReporter:
                     + str(aggregated_errors[error]['Error_message'])[0:100]
             
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
-            payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)
+            payload = self._prepare_issue_payload(issue_hash, title, description)
             self.issues_connector.create_issue(payload)
 
 
     def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
-        print(performance_degradation_rate)
-        print(compare_with_baseline)
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Performance degradation in test: " + str(self.args['simulation'])
         description = self.create_performance_degradation_description(performance_degradation_rate,
                                                                       compare_with_baseline, issue_hash, self.args)
-        payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)                                                
+        payload = self._prepare_issue_payload(issue_hash, title, description)                                                
         self.issues_connector.create_issue(payload)
 
 
@@ -91,7 +89,7 @@ class EngagementReporter:
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         description = self.create_missed_thresholds_description(missed_threshold_rate,
                                                                 compare_with_thresholds, issue_hash)
-        payload = self._prepare_issue_payload(issue_hash, title, description, "High", self.engagement_id)                                                
+        payload = self._prepare_issue_payload(issue_hash, title, description)                                                
         self.issues_connector.create_issue(payload)
 
     
