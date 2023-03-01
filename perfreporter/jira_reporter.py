@@ -28,10 +28,10 @@ class JiraReporter(Reporter):
             return
         self.assignee = config.get("assignee", self.user)
         self.issue_type = config["integration_settings"].get("issue_type", "Bug")
-        self.labels = config.get("jira_labels")
+        self.labels = config.get("jira_labels", list())
         if self.labels:
             self.labels = [label.strip() for label in config["jira_labels"].split(",")]
-        self.watchers = config.get("jira_watchers")
+        self.watchers = config.get("jira_watchers", list())
         if self.watchers:
             self.watchers = [watcher.strip() for watcher in config["jira_watchers"].split(",")]
         self.jira_epic_key = config.get("jira_epic_key", None)
