@@ -12,22 +12,22 @@ class JiraReporter(Reporter):
         super().__init__(**quality_gate_config)
         self.valid = True
         self.args = args
-        self.url = config["jira_url"]
-        self.user = config["jira_login"]
-        self.password = config["jira_password"]
+        self.url = config["integration_settings"]["url"]
+        self.user = config["integration_settings"]["login"]
+        self.password = config["integration_settings"]["passwd"]
         try:
             self.connect()
         except Exception:
             self.valid = False
             return
         self.projects = [project.key for project in self.client.projects()]
-        self.project = config["jira_project"]
+        self.project = config["integration_settings"]["project"]
         if self.project not in self.projects:
             self.client.close()
             self.valid = False
             return
-        self.assignee = config.get("assignee", config["jira_login"])
-        self.issue_type = config.get("issue_type", "Bug")
+        self.assignee = config.get("assignee", self.user)
+        self.issue_type = config["integration_settings"].get("issue_type", "Bug")
         self.labels = config.get("jira_labels")
         if self.labels:
             self.labels = [label.strip() for label in config["jira_labels"].split(",")]
