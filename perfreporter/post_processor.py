@@ -92,6 +92,13 @@ class PostProcessor:
         ado_config = integration.get('reporters', {}).get('azure_devops')
         ado_reporter = reporter.get_ado_reporter(args, ado_config, quality_gate_config) if ado_config else None
 
+
+        engagement_reporter = None
+        if integration and integration.get("reporters") and "reporter_engagement" in integration['reporters'].keys():
+            if galloper_url and token and project_id:
+                payload = integration['reporters']['reporter_engagement']
+                engagement_reporter = reporter.get_engagement_rp_service(args, galloper_url, token, payload, project_id)
+
         performance_degradation_rate, missed_threshold_rate = 0, 0
         users_count, duration = 0, 0
         total_checked_thresholds = 0
@@ -115,9 +122,9 @@ class PostProcessor:
                 logger.error(e)
             try:
                 reporter.report_performance_degradation(performance_degradation_rate, compare_with_baseline, rp_service,
-                                                        jira_service, ado_reporter)
+                                                        jira_service, ado_reporter, engagement_reporter)
                 reporter.report_missed_thresholds(missed_threshold_rate, compare_with_thresholds, rp_service,
-                                                  jira_service, ado_reporter)
+                                                  jira_service, ado_reporter, engagement_reporter)
             except Exception as e:
                 logger.error(e)
             if quality_gate_config:
@@ -133,13 +140,14 @@ class PostProcessor:
                     logger.error("Failed to create junit report")
                     logger.error(e)
             if galloper_url:
-                try:
-                    thresholds_quality_gate = int(quality_gate_config["missed_thresholds_rate"])
-                    # thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
-                except:
-                    thresholds_quality_gate = 20
+                # try:
+                #     thresholds_quality_gate = int(quality_gate_config["missed_thresholds_rate"])
+                #     # thresholds_quality_gate = int(integration["reporters"]["quality_gate"]["failed_thresholds_rate"])
+                # except:
+                #     thresholds_quality_gate = 20
                 if total_checked_thresholds:
-                    if missed_threshold_rate > thresholds_quality_gate:
+                    if quality_gate_config.get('check_missed_thresholds') and missed_threshold_rate > quality_gate_config["missed_thresholds_rate"]:
+                        thresholds_quality_gate = quality_gate_config["missed_thresholds_rate"]
                         test_status = {"status": "Failed", "percentage": 100,
                                        "description": f"Missed more then {thresholds_quality_gate}% thresholds"}
                     else:
@@ -171,7 +179,8 @@ class PostProcessor:
                         logger.error(response.text)
         try:
             reporter.report_errors(aggregated_errors, rp_service, jira_service, performance_degradation_rate,
-                                   compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter)
+                                   compare_with_baseline, missed_threshold_rate, compare_with_thresholds, ado_reporter,
+                                   engagement_reporter)
         except Exception as e:
             logger.error(e)
 
