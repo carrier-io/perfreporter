@@ -10,32 +10,33 @@ class JiraReporter(Reporter):
 
     def __init__(self, args, config, quality_gate_config):
         super().__init__(**quality_gate_config)
-        self.valid = True
         self.args = args
-        self.url = config["integration_settings"]["url"]
-        self.user = config["integration_settings"]["login"]
-        self.password = config["integration_settings"]["passwd"]
-        try:
-            self.connect()
-        except Exception:
-            self.valid = False
-            return
+        self.config = config["reporter_jira"]
+        self.url = self.config["integration_settings"]["url"]
+        self.user = self.config["integration_settings"]["login"]
+        self.password = self.config["integration_settings"]["passwd"]
+        self.connect()
         self.projects = [project.key for project in self.client.projects()]
-        self.project = config["integration_settings"]["project"]
+        self.project = self.config["integration_settings"]["project"]
         if self.project not in self.projects:
             self.client.close()
-            self.valid = False
             return
-        self.assignee = config.get("assignee", self.user)
-        self.issue_type = config["integration_settings"].get("issue_type", "Bug")
-        self.labels = config.get("jira_labels", list())
+        self.assignee = self.config.get("assignee", self.user)
+        self.issue_type = self.config["integration_settings"].get("issue_type", "Bug")
+        self.labels = self.config.get("jira_labels", list())
         if self.labels:
-            self.labels = [label.strip() for label in config["jira_labels"].split(",")]
-        self.watchers = config.get("jira_watchers", list())
+            self.labels = [label.strip() for label in self.config["jira_labels"].split(",")]
+        self.watchers = self.config.get("jira_watchers", list())
         if self.watchers:
-            self.watchers = [watcher.strip() for watcher in config["jira_watchers"].split(",")]
-        self.jira_epic_key = config.get("jira_epic_key", None)
-        self.client.close()
+            self.watchers = [watcher.strip() for watcher in self.config["jira_watchers"].split(",")]
+        self.jira_epic_key = self.config.get("jira_epic_key", None)
+
+    @staticmethod
+    def is_valid_config(jira_config):
+        for each in ["url", "login", "passwd", "project"]:
+            if not jira_config["integration_settings"].get(each):
+                return False
+        return True               
 
     def connect(self):
         self.client = JIRA(self.url, basic_auth=(self.user, self.password))
