@@ -32,7 +32,7 @@ class JiraReporter(Reporter):
         self.jira_epic_key = self.config.get("jira_epic_key", None)
 
     @staticmethod
-    def is_valid_config(jira_config):
+    def is_valid_config(jira_config: dict) -> bool:
         for each in ["url", "login", "passwd", "project"]:
             if not jira_config["integration_settings"].get(each):
                 return False
@@ -180,7 +180,7 @@ class JiraReporter(Reporter):
                     appendage = calculate_appendage(th['target'])
                     description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
                                    f"with value {th['metric']}{appendage} " \
-                                   f"exceeded threshold of {th[color]}{appendage}\n"
+                                   f"exceeded threshold of {th['value']}{appendage}\n"
         description += "{panel}"
         return description
 

@@ -161,7 +161,7 @@ class ADOReporter(Reporter):
                     appendage = calculate_appendage(th['target'])
                     description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
                                    f"with value {th['metric']}{appendage} " \
-                                   f"exceeded threshold of {th[color]}{appendage}<br>"
+                                   f"exceeded threshold of {th['value']}{appendage}<br>"
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description
 
