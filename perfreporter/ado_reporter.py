@@ -81,7 +81,7 @@ class ADOReporter(Reporter):
                 return False
         return True      
 
-    def report_functional_errors(self, errors):
+    def report_errors(self, errors):
         for each in errors:
             error = errors[each]
             title = "Functional error in test: " + str(self.args['simulation']) + ". Request \"" \
