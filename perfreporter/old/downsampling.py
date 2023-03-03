@@ -70,8 +70,6 @@ class Downsampler(object):
                 "tags": {
                     "iteration": iteration,
                     "simulation": args['simulation'],
-                    "env": args['env'],
-                    "test_type": args['type'],
                     "build_id": args['build_id'],
                     "lg_id": args['lg_id'],
                     "request_name": req['request_name'],
