@@ -75,9 +75,11 @@ class ADOReporter(Reporter):
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
         
     @staticmethod
-    def is_valid_config(ado_config):
+    def is_valid_config(config):
+        if not 'azure_devops' in config:
+            return False
         for each in ("org", "project", "pat"):
-            if not ado_config.get(each):
+            if not config['azure_devops'].get(each):
                 return False
         return True      
 

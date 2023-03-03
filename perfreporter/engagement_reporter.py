@@ -54,9 +54,11 @@ class EngagementReporter(Reporter):
         self.issues_connector = IssuesConnector(self.report_url, self.query_url, self.token)
 
     @staticmethod
-    def is_valid_config(engagement_config: dict) -> bool:
+    def is_valid_config(config: dict) -> bool:
+        if not "reporter_engagement" in config:
+            return False
         for each in ('report_url', 'id', 'query_url'):
-            if not engagement_config.get(each):
+            if not config["reporter_engagement"].get(each):
                 return False
         return True    
 
