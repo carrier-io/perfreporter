@@ -76,7 +76,7 @@ class ADOReporter(Reporter):
         
     @staticmethod
     def is_valid_config(ado_config):
-        for each in ["org", "project", "pat"]:
+        for each in ("org", "project", "pat"):
             if not ado_config.get(each):
                 return False
         return True      

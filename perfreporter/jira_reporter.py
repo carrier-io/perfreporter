@@ -33,7 +33,7 @@ class JiraReporter(Reporter):
 
     @staticmethod
     def is_valid_config(jira_config: dict) -> bool:
-        for each in ["url", "login", "passwd", "project"]:
+        for each in ("url", "login", "passwd", "project"):
             if not jira_config["integration_settings"].get(each):
                 return False
         return True               
