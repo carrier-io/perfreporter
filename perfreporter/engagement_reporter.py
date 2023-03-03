@@ -49,8 +49,8 @@ class EngagementReporter(Reporter):
         self.config = config["reporter_engagement"]
         self.engagement_id = self.config["id"]
         self.token = args['token']
-        self.report_url = args['base_url'] + self.config['report_url'] + '/' + self.config['project_id']
-        self.query_url = args['base_url'] + self.config['query_url'] + '/' + self.config['project_id']
+        self.report_url = args['base_url'] + self.config['report_url'] + '/' + args['project_id']
+        self.query_url = args['base_url'] + self.config['query_url'] + '/' + args['project_id']
         self.issues_connector = IssuesConnector(self.report_url, self.query_url, self.token)
 
     @staticmethod
