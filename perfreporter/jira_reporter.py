@@ -32,9 +32,11 @@ class JiraReporter(Reporter):
         self.jira_epic_key = self.config.get("jira_epic_key", None)
 
     @staticmethod
-    def is_valid_config(jira_config: dict) -> bool:
+    def is_valid_config(config: dict) -> bool:
+        if not "reporter_jira" in config:
+            return False
         for each in ("url", "login", "passwd", "project"):
-            if not jira_config["integration_settings"].get(each):
+            if not config["reporter_jira"]["integration_settings"].get(each):
                 return False
         return True               
 
