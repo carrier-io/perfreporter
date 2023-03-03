@@ -1,8 +1,6 @@
 from requests import post
 import hashlib
-
 from perfreporter.utils import calculate_appendage
-from perfreporter.base_reporter import Reporter
 
 
 CREATE_ISSUE_URL = 'https://dev.azure.com/{organization}/{project}/_apis/wit/workitems/' \
@@ -59,11 +57,10 @@ class ADOConnector(object):
         return False
 
 
-class ADOReporter(Reporter):
+class ADOReporter(object):
 
-    def __init__(self, args, config, quality_gate_config):
-        super().__init__(**quality_gate_config)
-        self.config = config['azure_devops']
+    def __init__(self, args, ado_config, quality_gate_config):
+        self.config = ado_config
         self.args = args
         organization = self.config.get("org")
         project = self.config.get("project")
@@ -72,16 +69,14 @@ class ADOReporter(Reporter):
         issue_type = self.config.get("issue_type")
         self.other_fields = self.config.get("custom_fields", {})
         self.assignee = self.config.get("assignee", None)
+        self.check_functional_errors = quality_gate_config.get("check_functional_errors", False)
+        self.check_performance_degradation = quality_gate_config.get("check_performance_degradation", False)
+        self.check_missed_thresholds = quality_gate_config.get("check_missed_thresholds", False)
+        self.performance_degradation_rate = quality_gate_config.get("performance_degradation_rate", 20)
+        self.missed_thresholds_rate = quality_gate_config.get("missed_thresholds_rate", 50)
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
-        
-    @staticmethod
-    def is_valid_config(ado_config):
-        for each in ("org", "project", "pat"):
-            if not ado_config.get(each):
-                return False
-        return True      
 
-    def report_errors(self, errors):
+    def report_functional_errors(self, errors):
         for each in errors:
             error = errors[each]
             title = "Functional error in test: " + str(self.args['simulation']) + ". Request \"" \
@@ -161,7 +156,7 @@ class ADOReporter(Reporter):
                     appendage = calculate_appendage(th['target'])
                     description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
                                    f"with value {th['metric']}{appendage} " \
-                                   f"exceeded threshold of {th['value']}{appendage}<br>"
+                                   f"exceeded threshold of {th[color]}{appendage}<br>"
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description
 

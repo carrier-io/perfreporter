@@ -1,9 +1,7 @@
 from requests import post, get
 from json import dumps
 import hashlib
-
 from perfreporter.utils import calculate_appendage
-from perfreporter.base_reporter import Reporter
 
 
 class IssuesConnector(object):
@@ -42,23 +40,11 @@ class IssuesConnector(object):
         return False
 
 
-class EngagementReporter(Reporter):
-    def __init__(self, args, config, quality_gate_config):
-        super().__init__(**quality_gate_config)
+class EngagementReporter:
+    def __init__(self, args, report_url, query_url, token, engagement_id):
         self.args = args
-        self.config = config["reporter_engagement"]
-        self.engagement_id = self.config["id"]
-        self.token = args['token']
-        self.report_url = args['base_url'] + self.config['report_url'] + '/' + args['project_id']
-        self.query_url = args['base_url'] + self.config['query_url'] + '/' + args['project_id']
-        self.issues_connector = IssuesConnector(self.report_url, self.query_url, self.token)
-
-    @staticmethod
-    def is_valid_config(engagement_config: dict) -> bool:
-        for each in ('report_url', 'id', 'query_url'):
-            if not engagement_config.get(each):
-                return False
-        return True    
+        self.engagement_id = engagement_id
+        self.issues_connector = IssuesConnector(report_url, query_url, token)
 
     def _prepare_issue_payload(self, issue_hash, title, description):
         return {
