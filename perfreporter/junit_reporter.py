@@ -1,7 +1,7 @@
 from junit_xml import TestSuite, TestCase
 
 
-class JUnit_reporter(object):
+class JUnitReporter():
 
     @staticmethod
     def process_report(requests, thresholds):
