@@ -10,7 +10,7 @@ CREATE_ISSUE_URL = 'https://dev.azure.com/{organization}/{project}/_apis/wit/wor
 QUERY_ISSUE_URL = "https://dev.azure.com/{organization}/{project}/_apis/wit/wiql?api-version=5.1"
 
 
-class ADOConnector(object):
+class ADOConnector():
     def __init__(self, organization, project, personal_access_token, issue_type, team=None):
         self.auth = ('', personal_access_token)
         self.project = f"{project}"

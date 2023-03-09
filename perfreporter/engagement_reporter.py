@@ -6,7 +6,7 @@ from perfreporter.utils import calculate_appendage
 from perfreporter.base_reporter import Reporter
 
 
-class IssuesConnector(object):
+class IssuesConnector():
     def __init__(self, report_url, query_url, token):
         self.report_url = report_url
         self.query_url = query_url

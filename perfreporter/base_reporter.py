@@ -9,7 +9,7 @@ class Reporter(ABC):
         self.missed_thresholds_rate = quality_gate_config.get("missed_thresholds_rate", 50)
         
     @abstractmethod  
-    def is_valid_config(jira_config: dict) -> bool:
+    def is_valid_config(config: dict) -> bool:
         raise NotImplementedError
 
     @abstractmethod
