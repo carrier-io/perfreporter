@@ -167,7 +167,7 @@ class JiraReporter(Reporter):
         return description
 
     @staticmethod
-    def create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, arguments):
+    def create_missed_thresholds_description(missed_threshold_rate, report_data, arguments):
         title = "Missed thresholds in test: " + str(arguments['simulation'])
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
@@ -175,7 +175,7 @@ class JiraReporter(Reporter):
             .format(missed_threshold_rate) + "{color} \n"
         for color in ['yellow', 'red']:
             colored = False
-            for th in compare_with_thresholds:
+            for th in report_data:
                 if th['threshold'] == color:
                     if not colored:
                         description += f"h3. The following {color} thresholds were exceeded:\n"
@@ -210,10 +210,10 @@ class JiraReporter(Reporter):
                                                                       report_data, self.args)
         self.create_issue(title, 'Major', description, issue_hash)
 
-    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
+    def report_missed_thresholds(self, missed_threshold_rate, report_data):
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         description = self.create_missed_thresholds_description(missed_threshold_rate,
-                                                                compare_with_thresholds, self.args)
+                                                                report_data, self.args)
         self.create_issue(title, 'Major', description, issue_hash)
