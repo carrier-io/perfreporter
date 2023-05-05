@@ -210,7 +210,8 @@ class JiraReporter(Reporter):
                 content = io.StringIO()
                 content.write(str(aggregated_errors[error]['Response']))
                 attachment = {"binary_content": content, "message": "response_body.txt"}
-                self.create_issue(title, 'Major', description, issue_hash, [attachment])
+                self.create_issue(title, 'Major', description, issue_hash, attachments=[attachment],
+                                  additional_labels=[self.args['env'], self.args['type']])
 
     def report_performance_degradation(self, compare_baseline, report_data):
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
@@ -218,11 +219,13 @@ class JiraReporter(Reporter):
         title = "Performance degradation in test: " + str(self.args['simulation'])
         description = self.create_performance_degradation_description(compare_baseline,
                                                                       report_data, self.args)
-        self.create_issue(title, 'Major', description, issue_hash)
+        self.create_issue(title, 'Major', description, issue_hash, 
+                          additional_labels=[self.args['env'], self.args['type']])
 
     def report_missed_thresholds(self, compare_with_thresholds, report_data):
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         description = self.create_missed_thresholds_description(compare_with_thresholds, report_data, self.args)
-        self.create_issue(title, 'Major', description, issue_hash)
+        self.create_issue(title, 'Major', description, issue_hash, 
+                          additional_labels=[self.args['env'], self.args['type']])
