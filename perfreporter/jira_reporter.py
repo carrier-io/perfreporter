@@ -110,7 +110,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_functional_error_description(error, arguments):
         title = "Functional error in test: " + str(arguments['simulation']) + ". Request \"" \
-                + str(error['Request name']) + "\"."
+                + str(error['Request name']) + "\"." + f"Enviroment: {arguments['env']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         description += "h3. Request description\n"
@@ -152,7 +152,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_performance_degradation_description(compare_baseline, report_data, arguments):
         title = f"Performance degradation in test: {arguments['simulation']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}" 
+                Enviroment: {arguments['env']}, type: {arguments['type']}." 
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Test performance degradation is {}% compared to the baseline."\
@@ -176,7 +176,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_missed_thresholds_description(compare_with_thresholds, report_data, arguments):
         title = f"Missed thresholds in test: {arguments['simulation']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}" 
+                Enviroment: {arguments['env']}, type: {arguments['type']}." 
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
