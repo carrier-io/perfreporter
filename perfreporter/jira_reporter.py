@@ -205,7 +205,8 @@ class JiraReporter(Reporter):
                     + str(aggregated_errors[error]['Error_message'])[0:100]
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
             if len(str(aggregated_errors[error]['Response'])) < 55000:
-                self.create_issue(title, 'Major', description, issue_hash)
+                self.create_issue(title, 'Major', description, issue_hash,
+                                  additional_labels=[self.args['env'], self.args['type']])
             else:
                 content = io.StringIO()
                 content.write(str(aggregated_errors[error]['Response']))
