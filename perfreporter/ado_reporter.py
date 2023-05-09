@@ -90,28 +90,28 @@ class ADOReporter(Reporter):
                     + str(error['Request name']) + "\"."
             issue_hash = self.get_functional_error_hash_code(error, self.args)
             details = self.create_functional_error_description(error, issue_hash)
-            tags = ["Performance", "Error", self.args["influx_db"]]
+            tags = ["Performance", "Error", self.args['env'], self.args['type'], self.args["influx_db"]]
             post_result = self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
             if post_result:
                 print(post_result.status_code, post_result.reason)
         print("ADO: functional errors reporting")
 
-    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
+    def report_missed_thresholds(self, compare_with_thresholds, report_data):
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
-        details = self.create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash)
-        tags = ["Performance", "Thresholds", self.args["influx_db"]]
+        details = self.create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash)
+        tags = ["Performance", "Thresholds", self.args['env'], self.args['type'], self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
         print("ADO: missed thresholds reporting")
 
-    def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
+    def report_performance_degradation(self, compare_baseline, report_data):
         title = "Performance degradation in test: " + str(self.args['simulation'])
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
-        details = self.create_performance_degradation_description(performance_degradation_rate, compare_with_baseline,
+        details = self.create_performance_degradation_description(compare_baseline, report_data,
                                                                   issue_hash, self.args)
-        tags = ["Performance", "Baseline", self.args["influx_db"]]
+        tags = ["Performance", "Baseline", self.args['env'], self.args['type'], self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
         print("ADO: performance degradation reporting")
 
@@ -151,8 +151,10 @@ class ADOReporter(Reporter):
         return hashlib.sha256(error_str.strip().encode('utf-8')).hexdigest()
 
     @staticmethod
-    def create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash):
-        description = f"Percentage of requests exceeding the threshold was {missed_threshold_rate}%. <br>"
+    def create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash):
+        description = ""
+        for report in report_data: 
+            description += '<strong>' + report["message"] + "</strong><br>"
         for color in ['yellow', 'red']:
             colored = False
             for th in compare_with_thresholds:
@@ -168,14 +170,20 @@ class ADOReporter(Reporter):
         return description
 
     @staticmethod
-    def create_performance_degradation_description(performance_degradation_rate, compare_with_baseline, issue_hash,
-                                                   arguments):
-        description = f"Test performance degradation is {performance_degradation_rate}% compared to the baseline.<br>"
+    def create_performance_degradation_description(compare_baseline, report_data, issue_hash, arguments):
+        description = ""
+        for report in report_data:
+            description += '<strong>' + report["message"] + "</strong><br>"
         description += "<h3>The following requests are slower than baseline:</h3>"
-        for request in compare_with_baseline:
-            description += "\"{}\" reached {} ms by {}. Baseline {} ms.<br>".format(request['request_name'],
-                                                                                  request['response_time'],
-                                                                                  arguments['comparison_metric'],
-                                                                                  request['baseline'])
+        for request in compare_baseline:
+            appendage = calculate_appendage(request['target'])
+            description += "\"{}\" {} reached {} {} by {}. Baseline {} {}.<br>".format(request['request_name'],
+                                                                                       request['target'],
+                                                                                       request['metric'],
+                                                                                       appendage,
+                                                                                       arguments['comparison_metric'],
+                                                                                       request['baseline'],
+                                                                                       appendage
+                                                                                      )
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description

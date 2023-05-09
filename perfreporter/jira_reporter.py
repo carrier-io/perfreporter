@@ -110,7 +110,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_functional_error_description(error, arguments):
         title = "Functional error in test: " + str(arguments['simulation']) + ". Request \"" \
-                + str(error['Request name']) + "\"."
+                + str(error['Request name']) + "\"." + f"Enviroment: {arguments['env']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         description += "h3. Request description\n"
@@ -150,28 +150,39 @@ class JiraReporter(Reporter):
         return hashlib.sha256(error_str.strip().encode('utf-8')).hexdigest()
 
     @staticmethod
-    def create_performance_degradation_description(performance_degradation_rate, compare_with_baseline, arguments):
-        title = "Performance degradation in test: " + str(arguments['simulation'])
+    def create_performance_degradation_description(compare_baseline, report_data, arguments):
+        title = f"Performance degradation in test: {arguments['simulation']}. \
+                Enviroment: {arguments['env']}, type: {arguments['type']}." 
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
-        description += "{color:red}" + "Test performance degradation is {}% compared to the baseline."\
-            .format(performance_degradation_rate) + "{color} \n"
+        # description += "{color:red}" + "Test performance degradation is {}% compared to the baseline."\
+        #     .format(performance_degradation_rate) + "{color} \n"
+        for report in report_data:
+            description += "{color:red}" + report["message"] + "{color} \n"
         description += "h3. The following requests are slower than baseline:\n"
-        for request in compare_with_baseline:
-            description += "\"{}\" reached {} ms by {}. Baseline {} ms.\n".format(request['request_name'],
-                                                                                  request['response_time'],
-                                                                                  arguments['comparison_metric'],
-                                                                                  request['baseline'])
+        for request in compare_baseline:
+            appendage = calculate_appendage(request['target'])
+            description += "\"{}\" {} reached {} {} by {}. Baseline {} {}.\n".format(request['request_name'],
+                                                                                     request['target'],
+                                                                                     request['metric'],
+                                                                                     appendage,
+                                                                                     arguments['comparison_metric'],
+                                                                                     request['baseline'],
+                                                                                     appendage
+                                                                                    )
         description += "{panel}"
         return description
 
     @staticmethod
-    def create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, arguments):
-        title = "Missed thresholds in test: " + str(arguments['simulation'])
+    def create_missed_thresholds_description(compare_with_thresholds, report_data, arguments):
+        title = f"Missed thresholds in test: {arguments['simulation']}. \
+                Enviroment: {arguments['env']}, type: {arguments['type']}." 
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
-        description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
-            .format(missed_threshold_rate) + "{color} \n"
+        # description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
+        #     .format(missed_threshold_rate) + "{color} \n"
+        for report in report_data: 
+            description += "{color:red}" + report["message"] + "{color} \n"
         for color in ['yellow', 'red']:
             colored = False
             for th in compare_with_thresholds:
@@ -194,25 +205,28 @@ class JiraReporter(Reporter):
                     + str(aggregated_errors[error]['Error_message'])[0:100]
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
             if len(str(aggregated_errors[error]['Response'])) < 55000:
-                self.create_issue(title, 'Major', description, issue_hash)
+                self.create_issue(title, 'Major', description, issue_hash,
+                                  additional_labels=[self.args['env'], self.args['type']])
             else:
                 content = io.StringIO()
                 content.write(str(aggregated_errors[error]['Response']))
                 attachment = {"binary_content": content, "message": "response_body.txt"}
-                self.create_issue(title, 'Major', description, issue_hash, [attachment])
+                self.create_issue(title, 'Major', description, issue_hash, attachments=[attachment],
+                                  additional_labels=[self.args['env'], self.args['type']])
 
-    def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
+    def report_performance_degradation(self, compare_baseline, report_data):
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Performance degradation in test: " + str(self.args['simulation'])
-        description = self.create_performance_degradation_description(performance_degradation_rate,
-                                                                      compare_with_baseline, self.args)
-        self.create_issue(title, 'Major', description, issue_hash)
+        description = self.create_performance_degradation_description(compare_baseline,
+                                                                      report_data, self.args)
+        self.create_issue(title, 'Major', description, issue_hash, 
+                          additional_labels=[self.args['env'], self.args['type']])
 
-    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
+    def report_missed_thresholds(self, compare_with_thresholds, report_data):
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Missed thresholds in test: " + str(self.args['simulation'])
-        description = self.create_missed_thresholds_description(missed_threshold_rate,
-                                                                compare_with_thresholds, self.args)
-        self.create_issue(title, 'Major', description, issue_hash)
+        description = self.create_missed_thresholds_description(compare_with_thresholds, report_data, self.args)
+        self.create_issue(title, 'Major', description, issue_hash, 
+                          additional_labels=[self.args['env'], self.args['type']])
