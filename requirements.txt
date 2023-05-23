@@ -1,6 +1,6 @@
 reportportal-client==5.0.5
 jira==2.0.0
-requests==2.25.0
+requests==2.31.0
 PyYAML==5.4
 influxdb==5.2.0
 numpy==1.16.0
