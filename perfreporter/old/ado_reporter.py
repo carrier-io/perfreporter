@@ -1,8 +1,6 @@
 from requests import post
 import hashlib
-
 from perfreporter.utils import calculate_appendage
-from perfreporter.base_reporter import Reporter
 
 
 CREATE_ISSUE_URL = 'https://dev.azure.com/{organization}/{project}/_apis/wit/workitems/' \
@@ -10,7 +8,7 @@ CREATE_ISSUE_URL = 'https://dev.azure.com/{organization}/{project}/_apis/wit/wor
 QUERY_ISSUE_URL = "https://dev.azure.com/{organization}/{project}/_apis/wit/wiql?api-version=5.1"
 
 
-class ADOConnector():
+class ADOConnector(object):
     def __init__(self, organization, project, personal_access_token, issue_type, team=None):
         self.auth = ('', personal_access_token)
         self.project = f"{project}"
@@ -59,11 +57,10 @@ class ADOConnector():
         return False
 
 
-class ADOReporter(Reporter):
+class ADOReporter(object):
 
-    def __init__(self, args, config, quality_gate_config):
-        super().__init__(**quality_gate_config)
-        self.config = config['azure_devops']
+    def __init__(self, args, ado_config, quality_gate_config):
+        self.config = ado_config
         self.args = args
         organization = self.config.get("org")
         project = self.config.get("project")
@@ -72,46 +69,42 @@ class ADOReporter(Reporter):
         issue_type = self.config.get("issue_type")
         self.other_fields = self.config.get("custom_fields", {})
         self.assignee = self.config.get("assignee", None)
+        self.check_functional_errors = quality_gate_config.get("check_functional_errors", False)
+        self.check_performance_degradation = quality_gate_config.get("check_performance_degradation", False)
+        self.check_missed_thresholds = quality_gate_config.get("check_missed_thresholds", False)
+        self.performance_degradation_rate = quality_gate_config.get("performance_degradation_rate", 20)
+        self.missed_thresholds_rate = quality_gate_config.get("missed_thresholds_rate", 50)
         self.ado = ADOConnector(organization, project, personal_access_token, team, issue_type)
-        
-    @staticmethod
-    def is_valid_config(config):
-        if not 'azure_devops' in config:
-            return False
-        for each in ("org", "project", "pat"):
-            if not config['azure_devops'].get(each):
-                return False
-        return True      
 
-    def report_errors(self, errors):
+    def report_functional_errors(self, errors):
         for each in errors:
             error = errors[each]
             title = "Functional error in test: " + str(self.args['simulation']) + ". Request \"" \
                     + str(error['Request name']) + "\"."
             issue_hash = self.get_functional_error_hash_code(error, self.args)
             details = self.create_functional_error_description(error, issue_hash)
-            tags = ["Performance", "Error", self.args['env'], self.args['type'], self.args["influx_db"]]
+            tags = ["Performance", "Error", self.args["influx_db"]]
             post_result = self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
             if post_result:
                 print(post_result.status_code, post_result.reason)
         print("ADO: functional errors reporting")
 
-    def report_missed_thresholds(self, compare_with_thresholds, report_data):
+    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
         title = "Missed thresholds in test: " + str(self.args['simulation'])
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
-        details = self.create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash)
-        tags = ["Performance", "Thresholds", self.args['env'], self.args['type'], self.args["influx_db"]]
+        details = self.create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash)
+        tags = ["Performance", "Thresholds", self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
         print("ADO: missed thresholds reporting")
 
-    def report_performance_degradation(self, compare_baseline, report_data):
+    def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
         title = "Performance degradation in test: " + str(self.args['simulation'])
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
-        details = self.create_performance_degradation_description(compare_baseline, report_data,
+        details = self.create_performance_degradation_description(performance_degradation_rate, compare_with_baseline,
                                                                   issue_hash, self.args)
-        tags = ["Performance", "Baseline", self.args['env'], self.args['type'], self.args["influx_db"]]
+        tags = ["Performance", "Baseline", self.args["influx_db"]]
         self.ado.create_finding(title, details, assignee=self.assignee, issue_hash=issue_hash, tags=tags)
         print("ADO: performance degradation reporting")
 
@@ -151,10 +144,8 @@ class ADOReporter(Reporter):
         return hashlib.sha256(error_str.strip().encode('utf-8')).hexdigest()
 
     @staticmethod
-    def create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash):
-        description = ""
-        for report in report_data: 
-            description += '<strong>' + report["message"] + "</strong><br>"
+    def create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash):
+        description = f"Percentage of requests exceeding the threshold was {missed_threshold_rate}%. <br>"
         for color in ['yellow', 'red']:
             colored = False
             for th in compare_with_thresholds:
@@ -165,25 +156,19 @@ class ADOReporter(Reporter):
                     appendage = calculate_appendage(th['target'])
                     description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
                                    f"with value {th['metric']}{appendage} " \
-                                   f"exceeded threshold of {th['value']}{appendage}<br>"
+                                   f"exceeded threshold of {th[color]}{appendage}<br>"
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description
 
     @staticmethod
-    def create_performance_degradation_description(compare_baseline, report_data, issue_hash, arguments):
-        description = ""
-        for report in report_data:
-            description += '<strong>' + report["message"] + "</strong><br>"
+    def create_performance_degradation_description(performance_degradation_rate, compare_with_baseline, issue_hash,
+                                                   arguments):
+        description = f"Test performance degradation is {performance_degradation_rate}% compared to the baseline.<br>"
         description += "<h3>The following requests are slower than baseline:</h3>"
-        for request in compare_baseline:
-            appendage = calculate_appendage(request['target'])
-            description += "\"{}\" {} reached {} {} by {}. Baseline {} {}.<br>".format(request['request_name'],
-                                                                                       request['target'],
-                                                                                       request['metric'],
-                                                                                       appendage,
-                                                                                       arguments['comparison_metric'],
-                                                                                       request['baseline'],
-                                                                                       appendage
-                                                                                      )
+        for request in compare_with_baseline:
+            description += "\"{}\" reached {} ms by {}. Baseline {} ms.<br>".format(request['request_name'],
+                                                                                  request['response_time'],
+                                                                                  arguments['comparison_metric'],
+                                                                                  request['baseline'])
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description
