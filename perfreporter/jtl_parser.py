@@ -12,7 +12,7 @@ FIELDNAMES = 'timeStamp', 'response_time', 'request_name', "status_code", "respo
 class JTLParser(object):
 
     def parse_jtl(self):
-        log_file = "/tmp/reports/jmeter.jtl"
+        log_file = "/tmp/reports/result.jtl"
         unparsed_counter = 0
         requests = {}
         if not path.exists(log_file):
