@@ -3,7 +3,7 @@ import requests
 
 class EmailReporter():
 
-    @staticmethod    
+    @staticmethod
     def process_report(args, test_data, integration, quality_gate_config):
         email_notification_id = integration["reporters"]["reporter_email"].get("task_id")
         if email_notification_id:
@@ -32,13 +32,20 @@ class EmailReporter():
                     "smtp_user": integration["reporters"]["reporter_email"]["integration_settings"]["user"],
                     "smtp_sender": integration["reporters"]["reporter_email"]["integration_settings"]["sender"],
                     "smtp_password": integration["reporters"]["reporter_email"]["integration_settings"]["passwd"],
+                    "performance_degradation_rate": args['performance_degradation_rate'],
+                    "missed_threshold_rate": args['missed_threshold_rate'],
+                    "reasons_to_fail_report": args['reasons_to_fail_report'],
+                    "status": args['status'],
+                    "quality_gate_config": quality_gate_config
                 }
-                if quality_gate_config.get('check_functional_errors'):
-                    event["error_rate"] = quality_gate_config['error_rate']
-                if quality_gate_config.get('check_performance_degradation'):
-                    event["performance_degradation_rate"] = quality_gate_config['performance_degradation_rate']
-                if quality_gate_config.get('check_missed_thresholds'):
-                    event["missed_thresholds"] = quality_gate_config['missed_thresholds_rate']
+
+                if quality_gate_config.get("baseline", {}).get("checked"):
+                    event["performance_degradation_rate_qg"] = quality_gate_config.get("settings").get("per_request_results")['percentage_of_failed_requests']
+                if quality_gate_config.get("SLA", {}).get("checked"):
+                    event["missed_thresholds_qg"] = quality_gate_config.get("settings").get("per_request_results")['percentage_of_failed_requests']
+
+
+
 
                 res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {args["token"]}',
                                                                 'Content-type': 'application/json'})
