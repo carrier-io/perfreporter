@@ -30,15 +30,19 @@ class JiraReporter(Reporter):
         if self.watchers:
             self.watchers = [watcher.strip() for watcher in self.config["jira_watchers"].split(",")]
         self.jira_epic_key = self.config.get("jira_epic_key", None)
+        print("JIRA self.args")
+        print(self.args)
 
     @staticmethod
     def is_valid_config(config: dict) -> bool:
+        print("JIRA config ************************")
+        print(config)
         if not "reporter_jira" in config:
             return False
         for each in ("url", "login", "passwd", "project"):
             if not config["reporter_jira"]["integration_settings"].get(each):
                 return False
-        return True               
+        return True
 
     def connect(self):
         self.client = JIRA(self.url, basic_auth=(self.user, self.password))
@@ -109,7 +113,7 @@ class JiraReporter(Reporter):
 
     @staticmethod
     def create_functional_error_description(error, arguments):
-        title = "Functional error in test: " + str(arguments['simulation']) + ". Request \"" \
+        title = "Functional error in test: " + str(arguments['name']) + ". Request \"" \
                 + str(error['Request name']) + "\"." + f"Enviroment: {arguments['env']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
@@ -145,14 +149,14 @@ class JiraReporter(Reporter):
 
     @staticmethod
     def get_functional_error_hash_code(error, arguments):
-        error_str = arguments['simulation'] + "_" + error['Request URL'] + "_" + str(error['Error_message']) + "_" \
+        error_str = arguments['name'] + "_" + error['Request URL'] + "_" + str(error['Error_message']) + "_" \
                     + error['Request name']
         return hashlib.sha256(error_str.strip().encode('utf-8')).hexdigest()
 
     @staticmethod
     def create_performance_degradation_description(compare_baseline, report_data, arguments):
-        title = f"Performance degradation in test: {arguments['simulation']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}." 
+        title = f"Performance degradation in test: {arguments['name']}. \
+                Enviroment: {arguments['env']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Test performance degradation is {}% compared to the baseline."\
@@ -175,13 +179,13 @@ class JiraReporter(Reporter):
 
     @staticmethod
     def create_missed_thresholds_description(compare_with_thresholds, report_data, arguments):
-        title = f"Missed thresholds in test: {arguments['simulation']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}." 
+        title = f"Missed thresholds in test: {arguments['name']}. \
+                Enviroment: {arguments['env']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
         #     .format(missed_threshold_rate) + "{color} \n"
-        for report in report_data: 
+        for report in report_data:
             description += "{color:red}" + report["message"] + "{color} \n"
         for color in ['yellow', 'red']:
             colored = False
@@ -189,7 +193,7 @@ class JiraReporter(Reporter):
                 if th['threshold'] == color:
                     if not colored:
                         description += f"h3. The following {color} thresholds were exceeded:\n"
-                        colored = True    
+                        colored = True
                     appendage = calculate_appendage(th['target'])
                     description += f"\"{th['request_name']}\" {th['target']}{appendage} " \
                                    f"with value {th['metric']}{appendage} " \
@@ -200,7 +204,7 @@ class JiraReporter(Reporter):
     def report_errors(self, aggregated_errors):
         for error in aggregated_errors:
             issue_hash = self.get_functional_error_hash_code(aggregated_errors[error], self.args)
-            title = "Functional error in test: " + str(self.args['simulation']) + ". Request \"" \
+            title = "Functional error in test: " + str(self.args['name']) + ". Request \"" \
                     + str(aggregated_errors[error]['Request name']) + "\" failed with error message: " \
                     + str(aggregated_errors[error]['Error_message'])[0:100]
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
@@ -215,18 +219,18 @@ class JiraReporter(Reporter):
                                   additional_labels=[self.args['env'], self.args['type']])
 
     def report_performance_degradation(self, compare_baseline, report_data):
-        issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
+        issue_hash = hashlib.sha256("{} performance degradation".format(self.args['name']).strip()
                                     .encode('utf-8')).hexdigest()
-        title = "Performance degradation in test: " + str(self.args['simulation'])
+        title = "Performance degradation in test: " + str(self.args['name'])
         description = self.create_performance_degradation_description(compare_baseline,
                                                                       report_data, self.args)
-        self.create_issue(title, 'Major', description, issue_hash, 
+        self.create_issue(title, 'Major', description, issue_hash,
                           additional_labels=[self.args['env'], self.args['type']])
 
     def report_missed_thresholds(self, compare_with_thresholds, report_data):
-        issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
+        issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['name']).strip()
                                     .encode('utf-8')).hexdigest()
-        title = "Missed thresholds in test: " + str(self.args['simulation'])
+        title = "Missed thresholds in test: " + str(self.args['name'])
         description = self.create_missed_thresholds_description(compare_with_thresholds, report_data, self.args)
-        self.create_issue(title, 'Major', description, issue_hash, 
+        self.create_issue(title, 'Major', description, issue_hash,
                           additional_labels=[self.args['env'], self.args['type']])
