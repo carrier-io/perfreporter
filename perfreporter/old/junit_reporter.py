@@ -1,7 +1,7 @@
 from junit_xml import TestSuite, TestCase
 
 
-class JUnitReporter():
+class JUnit_reporter(object):
 
     @staticmethod
     def process_report(requests, thresholds):
@@ -37,25 +37,15 @@ class JUnitReporter():
             TestSuite.to_file(f, test_suites, prettyprint=True)
 
     @staticmethod
-    def create_report(thresholds, prefix, all_checks, reasons_to_fail_report):
+    def create_report(thresholds, prefix):
         path = "/tmp/junit_report_{}.xml".format(prefix)
         test_suites = []
-        summary_test_cases = []
         threshold_test_cases = []
         mapping = {
             'response_time': 'ms',
             'throughput': 'req/s',
             'error_rate': '%'
         }
-
-        for case in all_checks:
-            if case["status"] == "Failed":
-                summary_test_cases.append(TestCase(name="Quality gate", stdout=case["type"]))
-                summary_test_cases[-1].add_failure_info(case["message"])
-            else:
-                summary_test_cases.append(TestCase(name="Quality gate", stdout=f'{case["type"]}: {case["message"]}'))
-
-
         for th in thresholds:
             threshold_test_cases.append(TestCase(name=f'Threshold for {th["request_name"]}, target - {th["target"]}',
                                                  stdout=f'Value: {str(th["metric"])} {mapping.get(th["target"])}. '
@@ -63,12 +53,11 @@ class JUnitReporter():
 
             if th['threshold'] != 'green':
                 threshold_test_cases[-1].add_failure_info(f'{th["target"]} for {th["request_name"]} exceeded '
-                                                          f'{th["threshold"]} threshold of {th["value"]} '
+                                                          f'{th["threshold"]} threshold of {th.get(th["threshold"])} '
                                                           f'{mapping.get(th["target"])}. Test result - '
                                                           f'{str(th["metric"])} {mapping.get(th["target"])}')
 
-        test_suites.append(TestSuite("Quality gate ", summary_test_cases))
-        test_suites.append(TestSuite("Additional info ", threshold_test_cases))
+        test_suites.append(TestSuite("Thresholds ", threshold_test_cases))
         with open(path, 'w') as f:
             TestSuite.to_file(f, test_suites, prettyprint=True)
         return path

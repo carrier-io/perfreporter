@@ -1,12 +1,10 @@
 from requests import post, get
 from json import dumps
 import hashlib
-
 from perfreporter.utils import calculate_appendage
-from perfreporter.base_reporter import Reporter
 
 
-class IssuesConnector():
+class IssuesConnector(object):
     def __init__(self, report_url, query_url, token):
         self.report_url = report_url
         self.query_url = query_url
@@ -42,25 +40,11 @@ class IssuesConnector():
         return False
 
 
-class EngagementReporter(Reporter):
-    def __init__(self, args, config, quality_gate_config):
-        super().__init__(**quality_gate_config)
+class EngagementReporter:
+    def __init__(self, args, report_url, query_url, token, engagement_id):
         self.args = args
-        self.config = config["reporter_engagement"]
-        self.engagement_id = self.config["id"]
-        self.token = args['token']
-        self.report_url = args['base_url'] + self.config['report_url'] + '/' + args['project_id']
-        self.query_url = args['base_url'] + self.config['query_url'] + '/' + args['project_id']
-        self.issues_connector = IssuesConnector(self.report_url, self.query_url, self.token)
-
-    @staticmethod
-    def is_valid_config(config: dict) -> bool:
-        if not "reporter_engagement" in config:
-            return False
-        for each in ('report_url', 'id', 'query_url'):
-            if not config["reporter_engagement"].get(each):
-                return False
-        return True    
+        self.engagement_id = engagement_id
+        self.issues_connector = IssuesConnector(report_url, query_url, token)
 
     def _prepare_issue_payload(self, issue_hash, title, description):
         return {
@@ -88,21 +72,23 @@ class EngagementReporter(Reporter):
             self.issues_connector.create_issue(payload)
 
 
-    def report_performance_degradation(self, compare_baseline, report_data):
+    def report_performance_degradation(self, performance_degradation_rate, compare_with_baseline):
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Performance degradation in test: " + str(self.args['simulation'])
-        description = self.create_performance_degradation_description(compare_baseline, report_data, 
-                                                                      issue_hash, self.args)
+        description = self.create_performance_degradation_description(performance_degradation_rate,
+                                                                      compare_with_baseline, issue_hash, self.args)
         payload = self._prepare_issue_payload(issue_hash, title, description)                                                
         self.issues_connector.create_issue(payload)
 
 
-    def report_missed_thresholds(self, compare_with_thresholds, report_data):
+    def report_missed_thresholds(self, missed_threshold_rate, compare_with_thresholds):
+        
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['simulation']).strip()
                                     .encode('utf-8')).hexdigest()
         title = "Missed thresholds in test: " + str(self.args['simulation'])
-        description = self.create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash)
+        description = self.create_missed_thresholds_description(missed_threshold_rate,
+                                                                compare_with_thresholds, issue_hash)
         payload = self._prepare_issue_payload(issue_hash, title, description)                                                
         self.issues_connector.create_issue(payload)
 
@@ -145,29 +131,21 @@ class EngagementReporter(Reporter):
 
 
     @staticmethod
-    def create_performance_degradation_description(compare_baseline, report_data, issue_hash, arguments):
-        description = ""
-        for report in report_data:
-            description += '<strong>' + report["message"] + "</strong><br>"
+    def create_performance_degradation_description(performance_degradation_rate, compare_with_baseline, issue_hash,
+                                                   arguments):
+        description = f"Test performance degradation is {performance_degradation_rate}% compared to the baseline.<br>"
         description += "<h3>The following requests are slower than baseline:</h3>"
-        for request in compare_baseline:
-            appendage = calculate_appendage(request['target'])
-            description += "\"{}\" {} reached {} {} by {}. Baseline {} {}.<br>".format(request['request_name'],
-                                                                                       request['target'],
-                                                                                       request['metric'],
-                                                                                       appendage,
-                                                                                       arguments['comparison_metric'],
-                                                                                       request['baseline'],
-                                                                                       appendage
-                                                                                      )
+        for request in compare_with_baseline:
+            description += "\"{}\" reached {} ms by {}. Baseline {} ms.<br>".format(request['request_name'],
+                                                                                  request['response_time'],
+                                                                                  arguments['comparison_metric'],
+                                                                                  request['baseline'])
         description += "<br><strong>Issue hash: </strong>" + str(issue_hash)
         return description
 
     @staticmethod
-    def create_missed_thresholds_description(compare_with_thresholds, report_data, issue_hash):
-        description = ""
-        for report in report_data: 
-            description += '<strong>' + report["message"] + "</strong><br>"
+    def create_missed_thresholds_description(missed_threshold_rate, compare_with_thresholds, issue_hash):
+        description = f"Percentage of requests exceeding the threshold was {missed_threshold_rate}%. <br>"
         for color in ['yellow', 'red']:
             colored = False
             for th in compare_with_thresholds:
