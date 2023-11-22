@@ -35,8 +35,6 @@ class JiraReporter(Reporter):
 
     @staticmethod
     def is_valid_config(config: dict) -> bool:
-        print("JIRA config ************************")
-        print(config)
         if not "reporter_jira" in config:
             return False
         for each in ("url", "login", "passwd", "project"):
