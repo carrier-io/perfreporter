@@ -114,7 +114,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_functional_error_description(error, arguments):
         title = "Functional error in test: " + str(arguments['name']) + ". Request \"" \
-                + str(error['Request name']) + "\"." + f"Enviroment: {arguments['env']}, type: {arguments['type']}."
+                + str(error['Request name']) + "\"." + f"Enviroment: {arguments['environment']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         description += "h3. Request description\n"
@@ -156,7 +156,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_performance_degradation_description(compare_baseline, report_data, arguments):
         title = f"Performance degradation in test: {arguments['name']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}."
+                Enviroment: {arguments['environment']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Test performance degradation is {}% compared to the baseline."\
@@ -180,7 +180,7 @@ class JiraReporter(Reporter):
     @staticmethod
     def create_missed_thresholds_description(compare_with_thresholds, report_data, arguments):
         title = f"Missed thresholds in test: {arguments['name']}. \
-                Enviroment: {arguments['env']}, type: {arguments['type']}."
+                Enviroment: {arguments['environment']}, type: {arguments['type']}."
         description = "{panel:title=" + title + \
                       "|borderStyle=solid|borderColor=#ccc|titleBGColor=#23b7c9|bgColor=#d7f0f3} \n"
         # description += "{color:red}" + "Percentage of requests exceeding the threshold was {}%." \
@@ -210,13 +210,13 @@ class JiraReporter(Reporter):
             description = self.create_functional_error_description(aggregated_errors[error], self.args)
             if len(str(aggregated_errors[error]['Response'])) < 55000:
                 self.create_issue(title, 'Major', description, issue_hash,
-                                  additional_labels=[self.args['env'], self.args['type']])
+                                  additional_labels=[self.args['environment'], self.args['type']])
             else:
                 content = io.StringIO()
                 content.write(str(aggregated_errors[error]['Response']))
                 attachment = {"binary_content": content, "message": "response_body.txt"}
                 self.create_issue(title, 'Major', description, issue_hash, attachments=[attachment],
-                                  additional_labels=[self.args['env'], self.args['type']])
+                                  additional_labels=[self.args['environment'], self.args['type']])
 
     def report_performance_degradation(self, compare_baseline, report_data):
         issue_hash = hashlib.sha256("{} performance degradation".format(self.args['name']).strip()
@@ -225,7 +225,7 @@ class JiraReporter(Reporter):
         description = self.create_performance_degradation_description(compare_baseline,
                                                                       report_data, self.args)
         self.create_issue(title, 'Major', description, issue_hash,
-                          additional_labels=[self.args['env'], self.args['type']])
+                          additional_labels=[self.args['environment'], self.args['type']])
 
     def report_missed_thresholds(self, compare_with_thresholds, report_data):
         issue_hash = hashlib.sha256("{} missed thresholds".format(self.args['name']).strip()
@@ -233,4 +233,4 @@ class JiraReporter(Reporter):
         title = "Missed thresholds in test: " + str(self.args['name'])
         description = self.create_missed_thresholds_description(compare_with_thresholds, report_data, self.args)
         self.create_issue(title, 'Major', description, issue_hash,
-                          additional_labels=[self.args['env'], self.args['type']])
+                          additional_labels=[self.args['environment'], self.args['type']])
