@@ -190,6 +190,7 @@ class Downsampler(object):
                     batch[key][each].extend(requests[key][each])
 
     def run(self):
+        # TODO use http connection
         external_client = InfluxDBClient(self.args["influx_host"], self.args["influx_port"], self.args["influx_user"],
                                          self.args["influx_password"], self.args["influx_db"])
         local_client = InfluxDBClient("localhost", "8086", "", "", "local")
