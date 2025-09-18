@@ -216,9 +216,9 @@ class Downsampler(object):
                 ok_requests, ko_requests = self.aggregate_results(requests_data)
                 self.append_to_batch(ok_requests_5min_batch, ok_requests)
                 self.append_to_batch(ko_requests_5min_batch, ko_requests)
-                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "1S", iteration)
-                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "5S", iteration)
-                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "30S", iteration)
+                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "1s", iteration)
+                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "5s", iteration)
+                self.resample_and_send_to_influx(external_client, self.args, ok_requests, ko_requests, "30s", iteration)
 
                 # Resample users data
                 users = {"timestamps": [], "active": []}
@@ -227,15 +227,15 @@ class Downsampler(object):
                     users["active"].append(each["active"])
                 users_5min_batch["timestamps"].extend(users["timestamps"])
                 users_5min_batch["active"].extend(users["active"])
-                self.resample_users_and_send_to_influx(external_client, self.args, users, "1S")
-                self.resample_users_and_send_to_influx(external_client, self.args, users, "5S")
-                self.resample_users_and_send_to_influx(external_client, self.args, users, "30S")
+                self.resample_users_and_send_to_influx(external_client, self.args, users, "1s")
+                self.resample_users_and_send_to_influx(external_client, self.args, users, "5s")
+                self.resample_users_and_send_to_influx(external_client, self.args, users, "30s")
 
             if iteration in [5, 10]:
                 self.resample_and_send_to_influx(external_client, self.args, ok_requests_5min_batch,
-                                                 ko_requests_5min_batch, "1T", iteration)
+                                                 ko_requests_5min_batch, "1min", iteration)
                 self.resample_and_send_to_influx(external_client, self.args, ok_requests_5min_batch,
-                                                 ko_requests_5min_batch, "5T", iteration)
+                                                 ko_requests_5min_batch, "5min", iteration)
                 self.append_to_batch(ok_requests_10min_batch, ok_requests_5min_batch)
                 self.append_to_batch(ko_requests_10min_batch, ko_requests_5min_batch)
                 del ok_requests_5min_batch
@@ -243,20 +243,20 @@ class Downsampler(object):
                 ok_requests_5min_batch, ko_requests_5min_batch = {}, {}
 
                 # Resample users data
-                self.resample_users_and_send_to_influx(external_client, self.args, users_5min_batch, "1T")
-                self.resample_users_and_send_to_influx(external_client, self.args, users_5min_batch, "5T")
+                self.resample_users_and_send_to_influx(external_client, self.args, users_5min_batch, "1min")
+                self.resample_users_and_send_to_influx(external_client, self.args, users_5min_batch, "5min")
                 users_10min_batch["timestamps"].extend(users_5min_batch["timestamps"])
                 users_10min_batch["active"].extend(users_5min_batch["active"])
                 del users_5min_batch
                 users_5min_batch = {"timestamps": [], "active": []}
             if iteration == 10:
                 self.resample_and_send_to_influx(external_client, self.args, ok_requests_10min_batch,
-                                                 ko_requests_10min_batch, "10T", iteration)
+                                                 ko_requests_10min_batch, "10min", iteration)
                 del ok_requests_10min_batch
                 del ko_requests_10min_batch
                 ok_requests_10min_batch, ko_requests_10min_batch = {}, {}
                 # Resample users data
-                self.resample_users_and_send_to_influx(external_client, self.args, users_10min_batch, "10T")
+                self.resample_users_and_send_to_influx(external_client, self.args, users_10min_batch, "10min")
                 del users_10min_batch
                 users_10min_batch = {"timestamps": [], "active": []}
                 iteration = 0
