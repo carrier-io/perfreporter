@@ -17,7 +17,7 @@ class Downsampler(object):
         start_time_ = time()
         for req in requests:
             _response_times = [0 if v is None else v for v in requests[req]["response_times"]]
-            dti = pd.to_datetime(requests[req]["timestamps"])
+            dti = pd.to_datetime(requests[req]["timestamps"], format='mixed')
             rt_ts = pd.Series(_response_times, index=dti)
             total = rt_ts.resample(aggregation, label='right').count()
             min_ = rt_ts.resample(aggregation, label='right').min()
