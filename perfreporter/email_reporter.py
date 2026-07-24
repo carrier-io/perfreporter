@@ -47,6 +47,6 @@ class EmailReporter():
 
 
 
-                res = requests.post(task_url, json=event, headers={'Authorization': f'bearer {args["token"]}',
+                res = requests.post(task_url, json=event, verify=False, headers={'Authorization': f'bearer {args["token"]}',
                                                                 'Content-type': 'application/json'})
                 return res.text
