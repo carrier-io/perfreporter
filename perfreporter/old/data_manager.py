@@ -83,12 +83,23 @@ BATCH_SIZE = int(environ.get("BATCH_SIZE", 5000000))
 
 
 class DataManager(object):
-    def __init__(self, arguments, galloper_url, token, project_id, logger):
+    def __init__(self, arguments, galloper_url, token, project_id, logger=None):
         self.args = arguments
         self.galloper_url = galloper_url
         self.token = token
         self.project_id = project_id
         self.last_build_data = None
+        
+        # Create default logger if not provided
+        if logger is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            if not logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                logger.addHandler(handler)
+                logger.setLevel(logging.INFO)
+        
         self.logger = logger
         self.client = InfluxDBClient(self.args["influx_host"], self.args['influx_port'],
                                      username=self.args['influx_user'], password=self.args['influx_password'])
@@ -294,12 +305,20 @@ class DataManager(object):
         self.args['build_id'] = tests_data[0][0]['build_id']
         baseline = self.get_baseline()
         total_checked, violations, thresholds = self.get_thresholds(last_test_data, add_green=True)
+        # Update args with calculated SLA failed rate (overwrite old value from event)
+        self.args['missed_threshold_rate'] = violations
+        # Calculate Baseline failed rate in Lambda (overwrite old value from event)
+        if baseline:
+            performance_degradation_rate, compare_with_baseline, baseline_debug = self.compare_with_baseline(baseline, last_test_data, thresholds)
+            self.args['performance_degradation_rate'] = performance_degradation_rate
+            self.args['baseline_debug'] = baseline_debug
         return tests_data, last_test_data, baseline, violations, thresholds
 
     def get_last_builds(self):
         self.client.switch_database(self.args['comparison_db'])
         tests_data = []
         build_ids = []
+        
         last_builds = self.client.query(SELECT_LAST_BUILDS_ID.format(
             self.args['test'], self.args['test_type'], str(self.args['users']), self.args['test'],
             str(self.args['test_limit'])))
@@ -309,7 +328,8 @@ class DataManager(object):
 
         for _id in build_ids:
             test_data = self.client.query(SELECT_LAST_BUILD_DATA.format(_id))
-            tests_data.append(list(test_data.get_points()))
+            test_points = list(test_data.get_points())
+            tests_data.append(test_points)
         return tests_data
 
     def get_user_count(self):
@@ -322,7 +342,7 @@ class DataManager(object):
             self.logger.error(e)
         return 0
 
-    def compare_with_baseline(self, baseline=None, last_build=None):
+    def compare_with_baseline(self, baseline=None, last_build=None, thresholds=None):
         if not baseline:
             baseline = self.get_baseline()
         if not last_build:
@@ -332,16 +352,291 @@ class DataManager(object):
         if not baseline:
             self.logger.warning("Baseline not found")
             return 0, []
+        
+        # Get deviations from Quality Gate config for baseline (independent of SLA thresholds)
+        quality_gate_config = self.args.get('quality_gate_config', {})
+        settings = quality_gate_config.get('settings', {})
+        summary_results = settings.get('summary_results', {})
+        per_request_results = settings.get('per_request_results', {})
+        
+        # Set baseline deviations from Quality Gate (always use these for baseline)
+        all_tp_deviation = summary_results.get('throughput_deviation', 0)
+        all_er_deviation = summary_results.get('error_rate_deviation', 0)
+        all_rt_deviation = summary_results.get('response_time_deviation', 0)
+        every_rt_deviation = per_request_results.get('response_time_deviation', 0)
+        
+        # Fetch SLA thresholds for potential use (but baseline uses Quality Gate deviations)
+        headers = {'Authorization': f'bearer {self.token}'} if self.token else {}
+        thresholds_url = f"{self.galloper_url}/api/v1/backend_performance/thresholds/{self.project_id}?" \
+                         f"test={self.args['simulation']}&env={self.args['env']}&order=asc"
+        try:
+            unfiltered_thresholds = requests.get(thresholds_url, headers={**headers, 'Content-type': 'application/json'}).json()
+        except Exception as e:
+            self.logger.error(f"Failed to fetch thresholds for baseline: {e}")
+            unfiltered_thresholds = []
+        
+        every_rt_found = False  # Track if 'every' threshold exists
+        
+        # Track which thresholds were found for debug
+        thresholds_found = []
+        all_thresholds_debug = []  # Store ALL thresholds for debugging
+        
+        # First, log all thresholds we received
+        for th in unfiltered_thresholds:
+            # Show both request_name and scope in debug (API may use either)
+            req_name = th.get('request_name', 'N/A')
+            scope = th.get('scope', 'N/A')
+            all_thresholds_debug.append(f"req_name={req_name}, scope={scope}, target={th.get('target', 'N/A')}, agg={th.get('aggregation', 'N/A')}, dev={th.get('deviation', 0)}")
+        
+        for th in unfiltered_thresholds:
+            # Check both 'request_name' and 'scope' fields for 'all'/'every' (API may use either)
+            req_name = th.get('request_name', '').lower()
+            scope_name = th.get('scope', '').lower()
+            
+            # Get deviation from Quality Gate config (unified for baseline, ignore threshold deviation)
+            quality_gate_config = self.args.get('quality_gate_config', {})
+            settings = quality_gate_config.get('settings', {})
+            
+            # Determine which config section to use based on scope
+            if scope_name == 'all' or req_name == 'all':
+                config_section = settings.get('summary_results', {})
+            else:
+                config_section = settings.get('per_request_results', {})
+            
+            # Get deviation for specific target type from Quality Gate
+            if th.get('target') == 'response_time':
+                deviation = config_section.get('response_time_deviation', 0)
+            elif th.get('target') == 'throughput':
+                deviation = config_section.get('throughput_deviation', 0)
+            elif th.get('target') == 'error_rate':
+                deviation = config_section.get('error_rate_deviation', 0)
+            
+            if req_name == 'all' or scope_name == 'all':
+                if th.get('target') == 'throughput':
+                    if all_tp_deviation == 0:  # Take first found, ignore duplicates
+                        all_tp_deviation = deviation
+                        thresholds_found.append(f"all/throughput: dev={all_tp_deviation}")
+                elif th.get('target') == 'error_rate':
+                    if all_er_deviation == 0:  # Take first found, ignore duplicates
+                        all_er_deviation = deviation
+                        thresholds_found.append(f"all/error_rate: dev={all_er_deviation}")
+                elif th.get('target') == 'response_time':
+                    if all_rt_deviation == 0:  # Take first found, ignore duplicates
+                        all_rt_deviation = deviation
+                        thresholds_found.append(f"all/response_time: dev={all_rt_deviation}, agg={th.get('aggregation', 'N/A')}")
+            elif req_name == 'every' or scope_name == 'every':
+                if th.get('target') == 'response_time':
+                    if not every_rt_found:  # Take first found, ignore duplicates
+                        every_rt_deviation = deviation
+                        every_rt_found = True
+                        thresholds_found.append(f"every/response_time: dev={every_rt_deviation}, agg={th.get('aggregation', 'N/A')}")
+        
+        # Get Quality Gate settings to check which metrics are enabled
+        quality_gate_config = self.args.get('quality_gate_config', {})
+        baseline_enabled = quality_gate_config.get('baseline', {}).get('checked', False)
+        
+        summary_rt_check = False
+        summary_er_check = False
+        summary_tp_check = False
+        per_request_rt_check = False
+        per_request_er_check = False
+        per_request_tp_check = False
+        
+        if baseline_enabled:
+            settings = quality_gate_config.get('settings', {})
+            summary_results = settings.get('summary_results', {})
+            per_request_results = settings.get('per_request_results', {})
+            
+            summary_rt_check = summary_results.get('check_response_time', False)
+            summary_er_check = summary_results.get('check_error_rate', False)
+            summary_tp_check = summary_results.get('check_throughput', False)
+            per_request_rt_check = per_request_results.get('check_response_time', False)
+            per_request_er_check = per_request_results.get('check_error_rate', False)
+            per_request_tp_check = per_request_results.get('check_throughput', False)
+        
+        # Compare metrics
+        total_comparisons = 0
+        total_violated = 0
+        
+        # Track for debug info
+        baseline_debug = {
+            "summary_rt_check": summary_rt_check,
+            "summary_er_check": summary_er_check,
+            "summary_tp_check": summary_tp_check,
+            "per_request_rt_check": per_request_rt_check,
+            "per_request_er_check": per_request_er_check,
+            "per_request_tp_check": per_request_tp_check,
+            "all_passed": 0,
+            "all_failed": 0,
+            "individual_passed": 0,
+            "individual_failed": 0,
+            "individual_details": [],
+            "all_details": []
+        }
+        
+        # Process per-request comparisons (exclude "All" row - will be processed separately)
         for request in last_build:
+            # Skip "All" row in per-request processing (same as SLA logic)
+            if request.get('request_name', '').lower() == 'all':
+                continue
+            
+            # Only check individual requests if Per request results response_time is enabled
+            # Note: Individual requests only check response_time (not ER/TP)
+            if not per_request_rt_check:
+                continue
+                
             for baseline_request in baseline:
                 if request['request_name'] == baseline_request['request_name']:
-                    if int(request[comparison_metric]) > int(baseline_request[comparison_metric]):
+                    total_comparisons += 1
+                    # Use 'every' deviation if 'every' threshold exists, otherwise fallback to 'all'
+                    # IMPORTANT: If 'every' exists with deviation=0, use 0 (don't fallback to 'all')
+                    rt_deviation = per_request_results.get('response_time_deviation', 0)
+                    # Apply deviation to baseline value (for response_time, higher threshold is worse)
+                    # NOTE: Convert to seconds and round to 2 decimal places for consistency with SLA
+                    baseline_value_with_deviation = round((float(baseline_request[comparison_metric]) + rt_deviation) / 1000, 2)
+                    current_val = round(float(request[comparison_metric]) / 1000, 2)
+                    baseline_val = round(float(baseline_request[comparison_metric]) / 1000, 2)
+                    failed = current_val > baseline_value_with_deviation
+                    
+                    if failed:
+                        total_violated += 1
+                        baseline_debug["individual_failed"] += 1
                         compare_with_baseline.append({"request_name": request['request_name'],
                                                       "response_time": request[comparison_metric],
                                                       "baseline": baseline_request[comparison_metric]
                                                       })
-        performance_degradation_rate = round(float(len(compare_with_baseline) / len(last_build)) * 100, 2)
-        return performance_degradation_rate, compare_with_baseline
+                    else:
+                        baseline_debug["individual_passed"] += 1
+                    
+                    # Store detailed info (limit to first 15 to avoid huge emails)
+                    if len(baseline_debug["individual_details"]) < 15:
+                        baseline_debug["individual_details"].append({
+                            "name": request['request_name'],
+                            "current": current_val,
+                            "baseline": baseline_val,
+                            "baseline_with_dev": baseline_value_with_deviation,
+                            "deviation": round(rt_deviation / 1000, 2),  # Convert deviation to seconds for display
+                            "result": "FAIL" if failed else "PASS"
+                        })
+                    break  # Found matching baseline, no need to continue inner loop
+        
+        # Process global "All" row separately (check all 3 metrics: throughput, error_rate, response_time)
+        # Find "All" row in last_build (case-insensitive)
+        all_row_current = next((req for req in last_build if req.get('request_name', '').lower() == 'all'), None)
+        all_row_baseline = next((req for req in baseline if req.get('request_name', '').lower() == 'all'), None)
+        
+        if all_row_current and all_row_baseline:
+            # Check all 3 metrics for "All" row (like SLA scope="all")
+            # Only check each metric if Summary results checkbox is enabled
+            # Calculate error_rate for both current and baseline (not stored as field)
+            
+            def calculate_baseline_metric(request, target):
+                if target == 'response_time':
+                    original_metric = request[comparison_metric]
+                    metric = round(original_metric / 1000, 2)
+                elif target == 'throughput':
+                    metric = round(float(request['throughput']), 2)
+                elif target == 'error_rate':
+                    metric = round(float(request['ko'] / request['total']) * 100, 2)
+                return metric
+            
+            current_error_rate = calculate_baseline_metric(all_row_current, 'error_rate')
+            baseline_error_rate = calculate_baseline_metric(all_row_baseline, 'error_rate')
+            
+            # Throughput check (only if summary_tp_check enabled)
+            if summary_tp_check:
+                total_comparisons += 1
+                current_tp = calculate_baseline_metric(all_row_current, 'throughput')
+                baseline_tp = calculate_baseline_metric(all_row_baseline, 'throughput')
+                baseline_throughput_with_dev = round(baseline_tp - all_tp_deviation, 2)
+                tp_failed = current_tp < baseline_throughput_with_dev
+                if tp_failed:
+                    total_violated += 1
+                    baseline_debug["all_failed"] += 1
+                    compare_with_baseline.append({"request_name": all_row_current['request_name'],
+                                                  "response_time": all_row_current['throughput'],
+                                                  "baseline": all_row_baseline['throughput'],
+                                                  "metric": "throughput"
+                                                  })
+                else:
+                    baseline_debug["all_passed"] += 1
+                
+                baseline_debug["all_details"].append({
+                    "metric": "throughput",
+                    "current": round(all_row_current['throughput'], 2),
+                    "baseline": round(all_row_baseline['throughput'], 2),
+                    "baseline_with_dev": round(baseline_throughput_with_dev, 2),
+                    "deviation": all_tp_deviation,
+                    "comparison": "<",
+                    "result": "FAIL" if tp_failed else "PASS"
+                })
+            
+            # Error rate check (only if summary_er_check enabled)
+            if summary_er_check:
+                total_comparisons += 1
+                baseline_error_rate_with_dev = round(baseline_error_rate + all_er_deviation, 2)
+                er_failed = current_error_rate > baseline_error_rate_with_dev
+                if er_failed:
+                    total_violated += 1
+                    baseline_debug["all_failed"] += 1
+                    compare_with_baseline.append({"request_name": all_row_current['request_name'],
+                                                  "response_time": current_error_rate,
+                                                  "baseline": baseline_error_rate,
+                                                  "metric": "error_rate"
+                                                  })
+                else:
+                    baseline_debug["all_passed"] += 1
+                
+                baseline_debug["all_details"].append({
+                    "metric": "error_rate",
+                    "current": round(current_error_rate, 2),
+                    "baseline": round(baseline_error_rate, 2),
+                    "baseline_with_dev": round(baseline_error_rate_with_dev, 2),
+                    "deviation": all_er_deviation,
+                    "comparison": ">",
+                    "result": "FAIL" if er_failed else "PASS"
+                })
+            
+            # Response time check (only if summary_rt_check enabled)
+            if summary_rt_check:
+                total_comparisons += 1
+                current_rt = calculate_baseline_metric(all_row_current, 'response_time')
+                baseline_rt = calculate_baseline_metric(all_row_baseline, 'response_time')
+                baseline_rt_with_dev = round(baseline_rt + all_rt_deviation, 2)
+                rt_failed = current_rt > baseline_rt_with_dev
+                if rt_failed:
+                    total_violated += 1
+                    baseline_debug["all_failed"] += 1
+                    compare_with_baseline.append({"request_name": all_row_current['request_name'],
+                                                  "response_time": all_row_current[comparison_metric],
+                                                  "baseline": all_row_baseline[comparison_metric],
+                                                  "metric": comparison_metric
+                                                  })
+                else:
+                    baseline_debug["all_passed"] += 1
+                
+                baseline_debug["all_details"].append({
+                    "metric": "response_time",
+                "current": round(all_row_current[comparison_metric], 2),
+                "baseline": round(all_row_baseline[comparison_metric], 2),
+                "baseline_with_dev": round(baseline_rt_with_dev, 2),
+                "deviation": all_rt_deviation,
+                "comparison": ">",
+                "result": "FAIL" if rt_failed else "PASS"
+            })
+        
+        # Calculate degradation rate based on all comparisons
+        if total_comparisons > 0:
+            performance_degradation_rate = round(float(total_violated / total_comparisons) * 100, 2)
+        else:
+            performance_degradation_rate = 0
+            
+        # Add final counts to debug
+        baseline_debug["total_comparisons"] = total_comparisons
+        baseline_debug["total_violated"] = total_violated
+        baseline_debug["performance_degradation_rate"] = performance_degradation_rate
+            
+        return performance_degradation_rate, compare_with_baseline, baseline_debug
 
     def compare_with_thresholds(self):
         last_build = self.get_last_build()
@@ -364,15 +659,91 @@ class DataManager(object):
 
     def compare_request_and_threhold(self, request, threshold):
         comparison_method = getattr(operator, COMPARISON_RULES[threshold['comparison']])
+        
+        # Store original value for debug
+        original_metric = None
+        
         if threshold['target'] == 'response_time':
-            metric = request[threshold['aggregation']] if threshold['aggregation'] != "avg" else request["mean"]
+            original_metric = request[threshold['aggregation']] if threshold['aggregation'] != "avg" else request["mean"]
+            metric = original_metric
+            # Convert milliseconds to seconds and round to 2 decimal places for comparison
+            metric = round(metric / 1000, 2)
         elif threshold['target'] == 'throughput':
             metric = request['throughput']
+            # Round throughput to 2 decimal places for comparison
+            metric = round(metric, 2)
         else:  # Will be in case error_rate is set as target
             metric = round(float(request['ko'] / request['total']) * 100, 2)
-        if comparison_method(metric, threshold['value']):
-            return "red", metric
-        return "green", metric
+        
+        # Apply deviation if exists (acceptable deviation from threshold)
+        # IMPORTANT: threshold['value'] is in milliseconds for response_time, needs conversion
+        threshold_value = threshold['value']
+        original_threshold = threshold_value
+        
+        # Get deviation from Quality Gate config based on threshold scope and target
+        # Deviation is ALWAYS from Quality Gate, threshold deviation is ignored (always 0)
+        quality_gate_config = self.args.get('quality_gate_config', {})
+        settings = quality_gate_config.get('settings', {})
+        
+        # Determine which section to use based on threshold scope
+        threshold_scope = threshold.get('scope', '').lower()
+        if threshold_scope == 'all':
+            # Use summary_results deviation for "all" scope
+            config_section = settings.get('summary_results', {})
+        else:
+            # Use per_request_results deviation for "every" and individual scopes
+            config_section = settings.get('per_request_results', {})
+        
+        # Get deviation based on target type from Quality Gate
+        if threshold['target'] == 'response_time':
+            deviation = config_section.get('response_time_deviation', 0)
+        elif threshold['target'] == 'throughput':
+            deviation = config_section.get('throughput_deviation', 0)
+        elif threshold['target'] == 'error_rate':
+            deviation = config_section.get('error_rate_deviation', 0)
+        
+        # For response_time: convert both threshold and deviation to seconds before applying
+        if threshold['target'] == 'response_time':
+            # Convert threshold from milliseconds to seconds
+            threshold_value = threshold_value / 1000
+            # Convert deviation from milliseconds to seconds
+            deviation = deviation / 1000
+        
+        # For "greater than" comparisons, add deviation to threshold
+        # For "less than" comparisons, subtract deviation from threshold
+        if threshold['comparison'] in ['gt', 'gte']:
+            # Allow metric to be higher by deviation amount before marking as red
+            threshold_value = threshold_value + deviation
+        elif threshold['comparison'] in ['lt', 'lte']:
+            # Allow metric to be lower by deviation amount before marking as red
+            threshold_value = threshold_value - deviation
+        
+        # Round threshold value to 2 decimal places for comparison
+        threshold_value = round(threshold_value, 2)
+        
+        result = comparison_method(metric, threshold_value)
+        color = "red" if result else "green"
+        
+        # Debug: store comparison details if debug mode enabled
+        if self.args.get('sla_debug_enabled', False):
+            if not hasattr(self, '_debug_comparisons'):
+                self._debug_comparisons = []
+            if len(self._debug_comparisons) < 15:
+                debug_entry = {
+                    'request': request.get('request_name', 'unknown'),
+                    'target': threshold['target'],
+                    'metric_original': original_metric if original_metric else metric,
+                    'metric_rounded': metric,
+                    'comparison': threshold['comparison'],
+                    'threshold_original': original_threshold,
+                    'deviation': threshold.get('deviation', 0),
+                    'threshold_with_deviation': threshold_value,
+                    'result': result,
+                    'color': color
+                }
+                self._debug_comparisons.append(debug_entry)
+        
+        return color, metric
 
     def aggregate_test(self):
         self.client.switch_database(self.args['influx_db'])
@@ -387,6 +758,7 @@ class DataManager(object):
         aggregated_dict['request_name'] = 'all'
         return aggregated_dict
 
+
     def get_thresholds(self, test, add_green=False):
         compare_with_thresholds = []
         total_checked = 0
@@ -396,48 +768,187 @@ class DataManager(object):
                          f"test={self.args['simulation']}&env={self.args['env']}&order=asc"
         _thresholds = requests.get(thresholds_url, headers={**headers, 'Content-type': 'application/json'}).json()
 
+        # Check what SLA metrics are actually configured BEFORE filtering by comparison_metric
+        # This is used for warning generation in report_builder
+        has_response_time_sla = any(th.get('target') == 'response_time' for th in _thresholds)
+        has_error_rate_sla = any(th.get('target') == 'error_rate' for th in _thresholds)
+        has_throughput_sla = any(th.get('target') == 'throughput' for th in _thresholds)
+        
+        # Store flags for report_builder to check
+        if not has_response_time_sla:
+            self.args['sla_no_response_time'] = True
+        if not has_error_rate_sla:
+            self.args['sla_no_error_rate'] = True
+        if not has_throughput_sla:
+            self.args['sla_no_throughput'] = True
+
+        # Get comparison_metric (default to pct95 if not specified)
+        comparison_metric = self.args.get('comparison_metric', 'pct95')
+        
+        # Filter thresholds by comparison_metric for response_time targets
+        filtered_thresholds = []
+        for th in _thresholds:
+            if th['target'] == 'response_time':
+                # For response_time, only include if aggregation matches comparison_metric
+                if th.get('aggregation') == comparison_metric:
+                    filtered_thresholds.append(th)
+            else:
+                # For throughput and error_rate, include all (no aggregation field)
+                filtered_thresholds.append(th)
+        
+        _thresholds = filtered_thresholds
+
+        # Get Quality Gate settings to check which metrics are enabled
+        quality_gate_config = self.args.get('quality_gate_config', {})
+        sla_enabled = quality_gate_config.get('SLA', {}).get('checked', False)
+        
+        summary_rt_check = False
+        summary_er_check = False
+        summary_tp_check = False
+        per_request_rt_check = False
+        per_request_er_check = False
+        per_request_tp_check = False
+        
+        if sla_enabled:
+            settings = quality_gate_config.get('settings', {})
+            summary_results = settings.get('summary_results', {})
+            per_request_results = settings.get('per_request_results', {})
+            
+            summary_rt_check = summary_results.get('check_response_time', False)
+            summary_er_check = summary_results.get('check_error_rate', False)
+            summary_tp_check = summary_results.get('check_throughput', False)
+            per_request_rt_check = per_request_results.get('check_response_time', False)
+            per_request_er_check = per_request_results.get('check_error_rate', False)
+            per_request_tp_check = per_request_results.get('check_throughput', False)
+        
         def compile_violation(request, th, total_checked, total_violated, compare_with_thresholds, add_green=False):
+            # Check if this threshold should be processed based on Quality Gate settings
+            scope = th.get('scope', '').lower()
+            target = th['target']
+            
+            # Skip threshold if metric is disabled in Quality Gate
+            # For "all" scope: check summary_results settings
+            if scope == 'all':
+                if target == 'response_time' and not summary_rt_check:
+                    return total_checked, total_violated, compare_with_thresholds
+                if target == 'error_rate' and not summary_er_check:
+                    return total_checked, total_violated, compare_with_thresholds
+                if target == 'throughput' and not summary_tp_check:
+                    return total_checked, total_violated, compare_with_thresholds
+            # For "every" scope (or specific request names): check per_request_results settings
+            else:
+                if target == 'response_time' and not per_request_rt_check:
+                    return total_checked, total_violated, compare_with_thresholds
+                if target == 'error_rate' and not per_request_er_check:
+                    return total_checked, total_violated, compare_with_thresholds
+                if target == 'throughput' and not per_request_tp_check:
+                    return total_checked, total_violated, compare_with_thresholds
+            
+            # If we got here, metric is enabled - always count it
             total_checked += 1
+            
             color, metric = self.compare_request_and_threhold(request, th)
-            if add_green or color is not "green":
+            
+            # Get deviation from Quality Gate config (always, since thresholds don't have deviation)
+            quality_gate_config = self.args.get('quality_gate_config', {})
+            settings = quality_gate_config.get('settings', {})
+            threshold_scope = th.get('scope', '').lower()
+            
+            if threshold_scope == 'all':
+                config_section = settings.get('summary_results', {})
+            else:
+                config_section = settings.get('per_request_results', {})
+            
+            if th['target'] == 'response_time':
+                deviation = config_section.get('response_time_deviation', 0)
+            elif th['target'] == 'throughput':
+                deviation = config_section.get('throughput_deviation', 0)
+            elif th['target'] == 'error_rate':
+                deviation = config_section.get('error_rate_deviation', 0)
+            else:
+                deviation = 0
+            
+            if add_green or color != "green":
                 compare_with_thresholds.append({
                     "request_name": request['request_name'],
                     "target": th['target'],
-                    "aggregation": th["aggregation"],
+                    "aggregation": th.get("aggregation"),
                     "metric": metric,
                     "threshold": color,
-                    "value": th["value"]
+                    "value": th["value"],
+                    "deviation": deviation,
+                    "comparison": th.get("comparison", "gt")
                 })
-            if color is not "green":
+            # Count violation if color is red (not green)
+            if color != "green":
                 total_violated += 1
             return total_checked, total_violated, compare_with_thresholds
-        globaly_applicable: list = list(filter(lambda _th: _th['scope'] == 'all', _thresholds))
-        every_applicable: list = list(filter(lambda _th: _th['scope'] == 'every', _thresholds))
-        individual: list = list(filter(lambda _th: _th['scope'] != 'every' and _th['scope'] != 'all', _thresholds))
+        
+        globaly_applicable: list = list(filter(lambda _th: _th.get('scope', '').lower() == 'all', _thresholds))
+        every_applicable: list = list(filter(lambda _th: _th.get('scope', '').lower() == 'every', _thresholds))
+        individual: list = list(filter(lambda _th: _th.get('scope', '').lower() not in ['every', 'all'], _thresholds))
+        
         individual_dict: dict = dict()
         for each in individual:
             if each['scope'] not in individual_dict:
                 individual_dict[each['scope']] = []
             individual_dict[each['scope']].append(each)
+        
+        # Process per-request thresholds with priority: individual > every
+        # Exclude "All" row - it will be processed separately with global thresholds
         for request in test:
-            thresholds = []
-            targets = []
+            # Skip "All" row in per-request processing
+            if request.get('request_name', '').lower() == 'all':
+                continue
+            thresholds_to_check = []
+            checked_targets = set()
+            
+            # Priority 1: Individual thresholds for this specific request
+            # IMPORTANT: For individual requests, ONLY response_time makes sense per-request
+            # error_rate and throughput should ONLY be checked at "all" level
             if request['request_name'] in individual_dict:
                 for ind in individual_dict[request['request_name']]:
-                    targets.append(ind['target'])
-                thresholds.extend(individual_dict[request['request_name']])
+                    # Only add response_time thresholds for per-request checking
+                    if ind['target'] == 'response_time':
+                        thresholds_to_check.append(ind)
+                        checked_targets.add(ind['target'])
+            
+            # Priority 2: Every thresholds (only if target not covered by individual)
+            # IMPORTANT: For "every" scope, ONLY response_time makes sense per-request
+            # error_rate and throughput should ONLY be checked at "all" level
             for th in every_applicable:
-                if th['target'] not in targets:
-                    thresholds.append(th)
-            for th in thresholds:
+                if th['target'] not in checked_targets:
+                    # Only add response_time thresholds for per-request checking
+                    if th['target'] == 'response_time':
+                        thresholds_to_check.append(th)
+                        checked_targets.add(th['target'])
+            
+            # Check all selected thresholds for this request
+            for th in thresholds_to_check:
                 total_checked, total_violated, compare_with_thresholds = compile_violation(
                     request, th, total_checked, total_violated, compare_with_thresholds, add_green)
+        
+        # Process global "all" scope thresholds separately
+        # Find "All" row in test data (aggregated metrics)
         if globaly_applicable:
-            test_data = self.aggregate_test()
-            for th in globaly_applicable:
-                total_checked, total_violated, compare_with_thresholds = compile_violation(
-                    test_data, th, total_checked, total_violated, compare_with_thresholds, add_green)
+            # Look for "All" row in test data (case-insensitive)
+            all_row = next((req for req in test if req.get('request_name', '').lower() == 'all'), None)
+            if all_row:
+                # Create a copy and ensure request_name is lowercase for threshold matching
+                all_row_copy = dict(all_row)
+                all_row_copy['request_name'] = 'all'
+                for th in globaly_applicable:
+                    total_checked, total_violated, compare_with_thresholds = compile_violation(
+                        all_row_copy, th, total_checked, total_violated, compare_with_thresholds, add_green)
+            else:
+                self.logger.warning("Warning: No 'All' row found in test data for global thresholds")
+        
         violated = 0
         if total_checked:
             violated = round(float(total_violated / total_checked) * 100, 2)
+        
+        # Store debug info if enabled
+        if self.args.get('sla_debug_enabled', False) and hasattr(self, '_debug_comparisons'):
+            self.args['sla_debug_comparisons'] = self._debug_comparisons
+        
         return total_checked, violated, compare_with_thresholds
